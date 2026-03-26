@@ -86,6 +86,7 @@ export default function Auth() {
                         type="email" placeholder="Email address"
                         className="w-full border px-4 py-3 rounded-lg focus:ring-2 focus:ring-black outline-none"
                         required
+                        autoComplete="email"
                         value={email} onChange={e => setEmail(e.target.value)}
                     />
                     <div className="space-y-2">
@@ -93,11 +94,12 @@ export default function Auth() {
                             type="password" placeholder="Password"
                             className="w-full border px-4 py-3 rounded-lg focus:ring-2 focus:ring-black outline-none"
                             required
+                            autoComplete={isLogin ? "current-password" : "new-password"}
                             value={password} onChange={e => setPassword(e.target.value)}
                         />
                         
                         {!isLogin && password.length > 0 && (
-                            <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                            <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 space-y-2">
                                 <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Password Requirements</p>
                                 {[
                                     { label: '8+ Characters', met: passRules.length },
