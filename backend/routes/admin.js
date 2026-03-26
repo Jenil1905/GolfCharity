@@ -94,20 +94,41 @@ router.get('/analytics', verifyAuth, verifyAdmin, async (req, res) => {
         supabaseAdmin.from('profiles').select('id', { count: 'exact', head: true }).neq('role', 'admin'),
         supabaseAdmin.from('profiles').select('id', { count: 'exact', head: true }).eq('subscription_status', 'active').neq('role', 'admin'),
         supabaseAdmin.from('draws').select('id', { count: 'exact', head: true }),
-        supabaseAdmin.from('winners').select('prize_amount, donation_amount, net_amount'),
+        supabaseAdmin.from('winners').select('prize_amount, donation_amount, net_amount, status, profiles(charity_percentage)'),
         supabaseAdmin.from('donations').select('amount, winner_id'),
     ]);
 
     const totalUsers = usersRes.count || 0;
     const activeSubscribers = activeRes.count || 0;
     const totalDraws = drawsRes.count || 0;
-    const totalPrizePool = activeSubscribers * 10; 
-    const totalPaidOut = (winnersRes.data || []).reduce((sum, w) => sum + Number(w.net_amount || 0), 0);
-    const prizeDonations = (winnersRes.data || []).reduce((sum, w) => sum + Number(w.donation_amount || 0), 0);
-    const charityContribution = (totalPrizePool * 0.10) + prizeDonations; 
     
-    // Filter from already-fetched donations for efficiency
+    // £10/user baseline. 10% of this (£1/user) is the platform's baseline charity impact.
+    const totalPrizePool = activeSubscribers * 10; 
+    const platformBaselineCharity = activeSubscribers * 1; // 10% of 10
+
+    // Calculate prize donations and payouts considering both pending and paid winners.
+    // This represents "what we are going to pay" and "what is coming from winnings".
+    let prizeDonations = 0;
+    let totalPaidOut = 0;
+
+    (winnersRes.data || []).forEach(w => {
+        if (w.status === 'paid') {
+            prizeDonations += Number(w.donation_amount || 0);
+            totalPaidOut += Number(w.net_amount || 0);
+        } else {
+            // Potential amounts for pending winners based on their profile preference
+            const pct = w.profiles?.charity_percentage || 10;
+            const prize = Number(w.prize_amount || 0);
+            prizeDonations += prize * (pct / 100);
+            totalPaidOut += prize * (1 - (pct / 100));
+        }
+    });
+
+    // One-time donations (not linked to a winner entry)
     const totalDirectDonations = (donationsRes.data || []).filter(d => !d.winner_id).reduce((sum, d) => sum + Number(d.amount || 0), 0);
+
+    // Total Charity Impact = 10% of Price Pool + Winning Impact + One-time Donations
+    const totalCharityImpact = platformBaselineCharity + prizeDonations + totalDirectDonations;
 
     const { count: monthlySubscribers = 0 } = await supabaseAdmin
         .from('profiles')
@@ -121,7 +142,18 @@ router.get('/analytics', verifyAuth, verifyAdmin, async (req, res) => {
         .neq('role', 'admin')
         .eq('subscription_plan', 'yearly');
 
-    res.json({ totalUsers, activeSubscribers, totalDraws, totalPrizePool, totalPaidOut, charityContribution, monthlySubscribers, yearlySubscribers, totalDonations: totalDirectDonations, prizeDonations });
+    res.json({ 
+        totalUsers, 
+        activeSubscribers, 
+        totalDraws, 
+        totalPrizePool, 
+        totalPaidOut, 
+        totalCharityImpact, 
+        monthlySubscribers, 
+        yearlySubscribers, 
+        totalDonations: totalDirectDonations, 
+        prizeDonations 
+    });
 });
 
 // ─── User Management ─────────────────────────────────────────────────────────

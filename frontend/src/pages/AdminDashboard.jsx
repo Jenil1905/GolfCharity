@@ -56,10 +56,10 @@ function AnalyticsTab({ token }) {
         { label: 'Active Subscribers', value: stats.activeSubscribers ?? 0, color: 'text-green-600' },
         { label: 'Monthly Subs', value: stats.monthlySubscribers ?? 0, color: 'text-indigo-600' },
         { label: 'Monthly Prize Pool', value: `£${stats.totalPrizePool ?? 0}`, sub: '£10 × active subscribers', color: 'text-blue-600' },
-        { label: 'Direct Donations', value: `£${(stats.totalDonations ?? 0).toFixed(2)}`, sub: 'Independent one-time gifts', color: 'text-orange-600' },
-        { label: 'Winnings Contributed', value: `£${(stats.prizeDonations ?? 0).toFixed(2)}`, sub: 'User prize-share donations', color: 'text-pink-600' },
-        { label: 'Prizes Paid Out', value: `£${(stats.totalPaidOut ?? 0).toFixed(2)}`, sub: 'Net amount paid to winners', color: 'text-purple-600' },
-        { label: 'Total Charity Impact', value: `£${((stats.charityContribution ?? 0) + (stats.totalDonations ?? 0)).toFixed(2)}`, sub: 'Platform + Prize % + Direct', color: 'text-green-600' },
+        { label: 'Direct Donations', value: `£${(stats.totalDonations ?? 0).toFixed(2)}`, sub: 'Non-game one-time gifts', color: 'text-orange-600' },
+        { label: 'Winning Contributed', value: `£${(stats.prizeDonations ?? 0).toFixed(2)}`, sub: 'From user winning impact', color: 'text-pink-600' },
+        { label: 'Total Payout', value: `£${(stats.totalPaidOut ?? 0).toFixed(2)}`, sub: 'What we are going to pay users', color: 'text-purple-600' },
+        { label: 'Total Charity Impact', value: `£${(stats.totalCharityImpact ?? 0).toFixed(2)}`, sub: 'Pool 10% + Winning + Direct', color: 'text-green-600' },
     ] : [];
 
     return (
