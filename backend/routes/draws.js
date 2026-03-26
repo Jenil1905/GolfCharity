@@ -83,6 +83,38 @@ router.get('/current', async (req, res) => {
     res.json(data);
 });
 
+// Get current jackpot stats (public)
+router.get('/stats', async (req, res) => {
+    try {
+        const { count: activeCount } = await supabaseAdmin
+            .from('profiles')
+            .select('id', { count: 'exact', head: true })
+            .eq('subscription_status', 'active');
+        
+        const now = new Date();
+        const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0); // End of current month
+        
+        res.json({
+            activeSubscribers: activeCount || 0,
+            estimatedPool: (activeCount || 0) * 10,
+            nextDrawDate: lastDayOfMonth.toISOString()
+        });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Hall of Fame (public)
+router.get('/hall-of-fame', async (req, res) => {
+    try {
+        const { data, error } = await supabaseAdmin
+            .from('winners')
+            .select('prize_amount, match_tier, profiles(first_name, last_name), draws(draw_month)')
+            .order('created_at', { ascending: false })
+            .limit(15);
+        if (error) throw error;
+        res.json(data);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Publish draw — saves draw to DB and generates winners
 router.post('/publish', verifyAuth, verifyAdmin, async (req, res) => {
     const { winning_numbers, draw_type } = req.body;
@@ -90,8 +122,22 @@ router.post('/publish', verifyAuth, verifyAdmin, async (req, res) => {
         return res.status(400).json({ error: 'You must simulate a draw first before publishing.' });
     }
 
-    const drawMonth = new Date();
-    drawMonth.setDate(1);
+    const now = new Date();
+    const currentMonthStr = now.toISOString().slice(0, 7) + '-01'; 
+
+    // Guard: Prevent double-publishing for the same month
+    const { data: existing } = await supabaseAdmin
+        .from('draws')
+        .select('id')
+        .eq('draw_month', currentMonthStr)
+        .limit(1)
+        .maybeSingle();
+
+    if (existing) {
+        return res.status(400).json({ error: `A draw has already been published for ${now.toLocaleString('default', { month: 'long', year: 'numeric' })}.` });
+    }
+
+    const drawMonth = new Date(currentMonthStr);
 
     // total prize pool based on active subscribers
     const { data: users, error: usersError } = await supabaseAdmin

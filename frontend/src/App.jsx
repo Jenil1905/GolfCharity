@@ -20,8 +20,9 @@ function Navbar() {
 
   return (
     <nav className="fixed w-full z-50 bg-white/80 backdrop-blur-md border-b border-gray-100 p-4 flex justify-between items-center">
-      <div className="font-bold text-xl tracking-tighter cursor-pointer">
-        <Link to="/">THE FOUNDATION</Link>
+      <div className="font-bold text-xl tracking-tighter cursor-pointer flex items-center gap-2">
+        <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center text-white text-xs italic font-black">GP</div>
+        <Link to="/">GOLFPULSE</Link>
       </div>
       <div className="space-x-4 text-sm font-medium">
         <Link to="/charities" className="text-gray-600 hover:text-black transition">Impact</Link>

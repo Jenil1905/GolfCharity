@@ -41,6 +41,43 @@ function SubscribeToast({ show }) {
     );
 }
 
+function Countdown({ targetDate }) {
+    const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, mins: 0, secs: 0 });
+
+    useEffect(() => {
+        if (!targetDate) return;
+        const timer = setInterval(() => {
+            const now = new Date().getTime();
+            const countTo = new Date(targetDate).getTime();
+            const diff = countTo - now;
+
+            if (diff <= 0) {
+                clearInterval(timer);
+                return;
+            }
+
+            setTimeLeft({
+                days: Math.floor(diff / (1000 * 60 * 60 * 24)),
+                hours: Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
+                mins: Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60)),
+                secs: Math.floor((diff % (1000 * 60)) / 1000)
+            });
+        }, 1000);
+        return () => clearInterval(timer);
+    }, [targetDate]);
+
+    return (
+        <div className="flex gap-4">
+            {[['D', timeLeft.days], ['H', timeLeft.hours], ['M', timeLeft.mins], ['S', timeLeft.secs]].map(([label, val]) => (
+                <div key={label} className="flex flex-col">
+                    <span className="text-2xl font-black text-gray-900 tabular-nums leading-none">{val.toString().padStart(2, '0')}</span>
+                    <span className="text-[9px] font-bold text-gray-300 mt-1">{label}</span>
+                </div>
+            ))}
+        </div>
+    );
+}
+
 export default function Dashboard() {
     const [scores, setScores] = useState([]);
     const [newScore, setNewScore] = useState('');
@@ -60,6 +97,7 @@ export default function Dashboard() {
     const [showSubToast, setShowSubToast] = useState(false);
     const [isProfileSaving, setIsProfileSaving] = useState(false);
     const [proofInputs, setProofInputs] = useState({});
+    const [stats, setStats] = useState({ estimatedPool: 0, nextDrawDate: null });
 
     const navigate = useNavigate();
 
@@ -74,9 +112,17 @@ export default function Dashboard() {
                 fetchCharities();
                 fetchMyWinners(session.access_token);
                 fetchCurrentDraw();
+                fetchStats();
             }
         });
     }, [navigate]);
+
+    const fetchStats = async () => {
+        try {
+            const res = await fetch(`${API}/draws/stats`);
+            setStats(await res.json());
+        } catch (e) { console.error(e); }
+    };
 
     const fetchProfile = async (token) => {
         try {
@@ -292,11 +338,28 @@ export default function Dashboard() {
             />
 
             <div className="flex justify-between items-center mb-8">
-                <h1 className="text-4xl font-bold">Your Portal</h1>
+                <h1 className="text-4xl font-black tracking-tight">GolfPulse Portal</h1>
                 <button onClick={() => supabase.auth.signOut().then(() => navigate('/auth'))} className="text-sm font-medium border px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors">Log Out</button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-start">
+                
+                {/* Stats Header Bar */}
+                <div className="md:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-4 mb-2">
+                    <div className="bg-gradient-to-br from-gray-900 to-black rounded-3xl p-6 text-white shadow-xl flex flex-col justify-center relative overflow-hidden">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-16 -mt-16 blur-3xl"></div>
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1">Live Estimated Jackpot</p>
+                        <div className="flex items-baseline gap-2">
+                            <span className="text-4xl font-black tabular-nums">£{stats.estimatedPool.toFixed(2)}</span>
+                            <span className="text-xs text-green-400 font-bold animate-pulse">LIVE</span>
+                        </div>
+                    </div>
+                    <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm flex flex-col justify-center">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1">Time to Next Draw</p>
+                        <Countdown targetDate={stats.nextDrawDate} />
+                    </div>
+                </div>
+
                 {/* Left Sidebar: Subscription & Impact */}
                 <div className="flex flex-col gap-6 sticky top-24">
                     <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
