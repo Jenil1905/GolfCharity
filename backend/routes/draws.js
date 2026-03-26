@@ -71,16 +71,22 @@ router.get('/history', async (req, res) => {
     res.json(data);
 });
 
-// Get latest draw details (public)
 router.get('/current', async (req, res) => {
-    const { data, error } = await supabaseAdmin
-        .from('draws')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single();
-    if (error) return res.status(500).json({ error: error.message });
-    res.json(data);
+    try {
+        const now = new Date();
+        const currentMonthStr = now.toISOString().slice(0, 7) + '-01';
+
+        const { data, error } = await supabaseAdmin
+            .from('draws')
+            .select('*')
+            .eq('draw_month', currentMonthStr)
+            .maybeSingle();
+
+        if (error) throw error;
+        res.json(data);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
 });
 
 // Get current jackpot stats (public)
@@ -207,8 +213,9 @@ router.post('/publish', verifyAuth, verifyAdmin, async (req, res) => {
     const fourPool = totalPool * 0.35;
     const threePool = totalPool * 0.25;
 
-    // Evaluate winners
+    // Evaluate winners & Store Global Snapshots
     const winnerCandidates = [];
+    const drawEntryInserts = [];
     let matchCounts = { 5: 0, 4: 0, 3: 0 };
 
     for (const u of users || []) {
@@ -217,7 +224,19 @@ router.post('/publish', verifyAuth, verifyAdmin, async (req, res) => {
             .order('date', { ascending: false })
             .order('created_at', { ascending: false })
             .limit(5);
-        if (!userScores) continue;
+
+        // Even users with no scores in the specific window are participants (0 played numbers)
+        // However, for this platform, they only participate if they have scores.
+        if (!userScores || userScores.length === 0) continue;
+
+        const playedNumbers = userScores.map(s => s.score).sort((a, b) => a - b);
+        
+        // Add to Global Snapshot list
+        drawEntryInserts.push({
+            user_id: u.id,
+            played_numbers: playedNumbers
+            // draw_id will be added after draw record is created
+        });
 
         const matches = countMatches(userScores, winning_numbers);
         if (matches >= 3) {
@@ -225,7 +244,7 @@ router.post('/publish', verifyAuth, verifyAdmin, async (req, res) => {
             winnerCandidates.push({ 
                 user_id: u.id, 
                 match_tier: matches,
-                played_numbers: userScores.map(s => s.score).sort((a, b) => a - b)
+                played_numbers: playedNumbers
             });
         }
     }
@@ -247,6 +266,15 @@ router.post('/publish', verifyAuth, verifyAdmin, async (req, res) => {
         .single();
 
     if (drawError) return res.status(500).json({ error: drawError.message });
+
+    // ─── Save Global Snapshots ───────────────────────────────────────────────
+    if (drawEntryInserts.length > 0) {
+        const entriesWithDrawId = drawEntryInserts.map(e => ({ ...e, draw_id: draw.id }));
+        const { error: entryError } = await supabaseAdmin
+            .from('draw_entries')
+            .insert(entriesWithDrawId);
+        if (entryError) console.error('[Publish] Error saving global snapshots:', entryError.message);
+    }
 
     // If there are winners, split tier pools equally
     const winnerInserts = [];

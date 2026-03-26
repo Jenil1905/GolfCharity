@@ -44,6 +44,37 @@ router.patch('/profile', verifyAuth, async (req, res) => {
     res.json(data);
 });
 
+// Mock Activation (Bypasses Stripe for testing)
+router.post('/mock-activate', verifyAuth, async (req, res) => {
+    const { planType } = req.body;
+    if (!['monthly', 'yearly'].includes(planType)) {
+        return res.status(400).json({ error: 'Invalid plan type' });
+    }
+
+    const now = new Date();
+    const expiresAt = new Date(now);
+    if (planType === 'yearly') {
+        expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+    } else {
+        expiresAt.setMonth(expiresAt.getMonth() + 1);
+    }
+
+    const { data, error } = await supabaseAdmin
+        .from('profiles')
+        .update({
+            subscription_status: 'active',
+            subscription_plan: planType,
+            subscription_started_at: now.toISOString(),
+            subscription_expires: expiresAt.toISOString()
+        })
+        .eq('id', req.user.id)
+        .select('*, charities(name, description, image_url)')
+        .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+});
+
 router.get('/check-role', verifyAuth, async (req, res) => {
     const { data, error } = await supabaseAdmin
         .from('profiles')
@@ -63,17 +94,20 @@ router.get('/analytics', verifyAuth, verifyAdmin, async (req, res) => {
         supabaseAdmin.from('profiles').select('id', { count: 'exact', head: true }).neq('role', 'admin'),
         supabaseAdmin.from('profiles').select('id', { count: 'exact', head: true }).eq('subscription_status', 'active').neq('role', 'admin'),
         supabaseAdmin.from('draws').select('id', { count: 'exact', head: true }),
-        supabaseAdmin.from('winners').select('prize_amount'),
-        supabaseAdmin.from('donations').select('amount'),
+        supabaseAdmin.from('winners').select('prize_amount, donation_amount, net_amount'),
+        supabaseAdmin.from('donations').select('amount, winner_id'),
     ]);
 
     const totalUsers = usersRes.count || 0;
     const activeSubscribers = activeRes.count || 0;
     const totalDraws = drawsRes.count || 0;
     const totalPrizePool = activeSubscribers * 10; 
-    const totalPaidOut = (winnersRes.data || []).reduce((sum, w) => sum + Number(w.prize_amount), 0);
-    const totalDonations = (donationsRes.data || []).reduce((sum, d) => sum + Number(d.amount || 0), 0);
-    const charityContribution = totalPrizePool * 0.10; 
+    const totalPaidOut = (winnersRes.data || []).reduce((sum, w) => sum + Number(w.net_amount || 0), 0);
+    const prizeDonations = (winnersRes.data || []).reduce((sum, w) => sum + Number(w.donation_amount || 0), 0);
+    const charityContribution = (totalPrizePool * 0.10) + prizeDonations; 
+    
+    // Filter from already-fetched donations for efficiency
+    const totalDirectDonations = (donationsRes.data || []).filter(d => !d.winner_id).reduce((sum, d) => sum + Number(d.amount || 0), 0);
 
     const { count: monthlySubscribers = 0 } = await supabaseAdmin
         .from('profiles')
@@ -87,7 +121,7 @@ router.get('/analytics', verifyAuth, verifyAdmin, async (req, res) => {
         .neq('role', 'admin')
         .eq('subscription_plan', 'yearly');
 
-    res.json({ totalUsers, activeSubscribers, totalDraws, totalPrizePool, totalPaidOut, charityContribution, monthlySubscribers, yearlySubscribers, totalDonations });
+    res.json({ totalUsers, activeSubscribers, totalDraws, totalPrizePool, totalPaidOut, charityContribution, monthlySubscribers, yearlySubscribers, totalDonations: totalDirectDonations, prizeDonations });
 });
 
 // ─── User Management ─────────────────────────────────────────────────────────
@@ -200,12 +234,47 @@ router.post('/my-winners/:id/proof', verifyAuth, async (req, res) => {
 router.patch('/winners/:id', verifyAuth, verifyAdmin, async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
+
+    // 1. Fetch current winner and user preference
+    const { data: winner, error: fetchErr } = await supabaseAdmin
+        .from('winners')
+        .select('*, profiles(charity_percentage, selected_charity_id)')
+        .eq('id', id)
+        .single();
+    
+    if (fetchErr) return res.status(500).json({ error: fetchErr.message });
+
+    const updates = { status };
+
+    if (status === 'paid') {
+        const percentage = winner.profiles?.charity_percentage || 10;
+        const totalPrize = Number(winner.prize_amount);
+        
+        const donationAmount = totalPrize * (percentage / 100);
+        const netAmount = totalPrize - donationAmount;
+
+        updates.donation_amount = donationAmount;
+        updates.net_amount = netAmount;
+
+        // 2. Record the donation officially
+        if (donationAmount > 0) {
+            await supabaseAdmin.from('donations').insert({
+                user_id: winner.user_id,
+                charity_id: winner.profiles?.selected_charity_id,
+                winner_id: id,
+                amount: donationAmount,
+                status: 'completed'
+            });
+        }
+    }
+
     const { data, error } = await supabaseAdmin
         .from('winners')
-        .update({ status })
+        .update(updates)
         .eq('id', id)
         .select()
         .single();
+
     if (error) return res.status(500).json({ error: error.message });
     res.json(data);
 });

@@ -43,15 +43,19 @@ router.post('/', verifyAuth, async (req, res) => {
         return res.status(400).json({ error: 'Score must be between 1 and 45' });
     }
 
-    // Server-side subscription gate — cannot be bypassed by client
+    // Server-side subscription & charity gate — cannot be bypassed by client
     const { data: profile, error: profileError } = await supabaseAdmin
         .from('profiles')
-        .select('subscription_status')
+        .select('subscription_status, selected_charity_id')
         .eq('id', req.user.id)
         .single();
 
     if (profileError || profile?.subscription_status !== 'active') {
         return res.status(403).json({ error: 'Active subscription required to submit scores.' });
+    }
+
+    if (!profile?.selected_charity_id) {
+        return res.status(400).json({ error: 'Please select a charity before submitting scores.' });
     }
 
     // Backend Date Validation

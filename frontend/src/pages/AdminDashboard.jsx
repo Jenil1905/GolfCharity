@@ -55,11 +55,11 @@ function AnalyticsTab({ token }) {
         { label: 'Total Users', value: stats.totalUsers ?? 0, color: 'text-gray-900' },
         { label: 'Active Subscribers', value: stats.activeSubscribers ?? 0, color: 'text-green-600' },
         { label: 'Monthly Subs', value: stats.monthlySubscribers ?? 0, color: 'text-indigo-600' },
-        { label: 'Yearly Subs', value: stats.yearlySubscribers ?? 0, color: 'text-purple-600' },
         { label: 'Monthly Prize Pool', value: `£${stats.totalPrizePool ?? 0}`, sub: '£10 × active subscribers', color: 'text-blue-600' },
-        { label: 'One-time Donations', value: `£${(stats.totalDonations ?? 0).toFixed(2)}`, sub: 'Independent of gameplay', color: 'text-orange-600' },
-        { label: 'Total Paid Out', value: `£${stats.totalPaidOut ?? 0}`, color: 'text-purple-600' },
-        { label: 'Charity Impact', value: `£${((stats.charityContribution ?? 0) + (stats.totalDonations ?? 0)).toFixed(2)}`, sub: 'Sub % + One-time', color: 'text-green-600' },
+        { label: 'Direct Donations', value: `£${(stats.totalDonations ?? 0).toFixed(2)}`, sub: 'Independent one-time gifts', color: 'text-orange-600' },
+        { label: 'Winnings Contributed', value: `£${(stats.prizeDonations ?? 0).toFixed(2)}`, sub: 'User prize-share donations', color: 'text-pink-600' },
+        { label: 'Prizes Paid Out', value: `£${(stats.totalPaidOut ?? 0).toFixed(2)}`, sub: 'Net amount paid to winners', color: 'text-purple-600' },
+        { label: 'Total Charity Impact', value: `£${((stats.charityContribution ?? 0) + (stats.totalDonations ?? 0)).toFixed(2)}`, sub: 'Platform + Prize % + Direct', color: 'text-green-600' },
     ] : [];
 
     return (
@@ -358,12 +358,32 @@ function DrawTab({ token }) {
             {/* Header with Timer */}
             <div className="bg-white rounded-[2.5rem] p-8 border border-gray-100 shadow-sm mb-8 flex flex-col md:flex-row items-center justify-between gap-8 overflow-hidden relative">
                 <div className="relative z-10 text-center md:text-left">
-                    <h2 className="text-3xl font-black tracking-tighter text-gray-900 leading-tight">Match Execution</h2>
-                    <p className="text-sm text-gray-400 font-bold uppercase tracking-widest mt-1">Official Draw Countdown</p>
+                    <h2 className="text-3xl font-black tracking-tighter text-gray-900 leading-tight">
+                        {drawStatus.isLocked ? 'Monthly Draw Finalized' : 'Draw Preparation'}
+                    </h2>
+                    <p className="text-sm text-gray-400 font-bold uppercase tracking-widest mt-1">
+                        {drawStatus.isLocked ? `Official Results for ${drawStatus.month}` : 'Simulate & Publish Results'}
+                    </p>
                 </div>
                 
                 <div className="relative z-10">
-                    {nextDrawDate && <Countdown targetDate={nextDrawDate} />}
+                    {drawStatus.isLocked && nextDrawDate && (
+                        <>
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-4 text-center md:text-right">Next Monthly Deadline</p>
+                            <Countdown targetDate={nextDrawDate} />
+                        </>
+                    )}
+                    {!drawStatus.isLocked && (
+                        <div className="flex flex-col items-center md:items-end justify-center">
+                            <div className="flex items-center gap-2 bg-indigo-50 text-indigo-700 px-4 py-2 rounded-2xl border border-indigo-100 shadow-sm">
+                                <span className="relative flex h-3 w-3">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-3 w-3 bg-indigo-500"></span>
+                                </span>
+                                <span className="text-sm font-bold tracking-tight">User Submissions Active</span>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* Decorative background element */}
@@ -375,7 +395,7 @@ function DrawTab({ token }) {
                 <div className={`bg-white rounded-[2rem] border border-gray-100 shadow-sm p-8 transition-all duration-500 ${drawStatus.isLocked ? 'grayscale opacity-60' : ''}`}>
                     <div className="flex items-center justify-between mb-8">
                         <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Step 1 — Strategy</p>
-                        {drawStatus.isLocked && <span className="text-[10px] font-black bg-amber-100 text-amber-600 px-3 py-1 rounded-full uppercase tracking-tighter">Locked</span>}
+                        {drawStatus.isLocked && <span className="text-[10px] font-black bg-green-100 text-green-700 px-3 py-1 rounded-full uppercase tracking-tighter shadow-sm border border-green-200">Draw Completed ✓</span>}
                     </div>
                     
                     <div className="grid grid-cols-2 gap-4 mb-8">
@@ -489,14 +509,16 @@ function DrawTab({ token }) {
                     )}
 
                     {publishResult && (
-                        <div className="flex-1 flex flex-col items-center justify-center text-center">
-                            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-5">
+                        <div className="flex-1 flex flex-col items-center justify-center text-center py-10">
+                            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm border border-green-200">
                                 <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                                 </svg>
                             </div>
-                            <p className="font-black text-gray-900 text-xl">Draw Published!</p>
-                            <p className="text-sm text-gray-500 mt-2">{publishResult.winnersGenerated} winner(s) generated and saved to the database.</p>
+                            <h3 className="font-black text-gray-900 text-2xl tracking-tight">Draw Published Successfully!</h3>
+                            <p className="text-gray-500 mt-2 max-w-sm mx-auto">
+                                The monthly results have been finalized. <strong>{publishResult.winnersGenerated} winners</strong> have been notified in their dashboards.
+                            </p>
                             <div className="text-left text-xs text-gray-500 mt-3 space-y-1">
                                 <p>5-match: {publishResult.matchCounts?.[5] || 0}</p>
                                 <p>4-match: {publishResult.matchCounts?.[4] || 0}</p>
@@ -655,6 +677,7 @@ function WinnersTab({ token }) {
     const [winners, setWinners] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedProof, setSelectedProof] = useState(null);
+    const [processingId, setProcessingId] = useState(null);
 
     const load = useCallback(() => {
         setLoading(true);
@@ -668,12 +691,21 @@ function WinnersTab({ token }) {
     useEffect(() => { load(); }, [load]);
 
     const updateStatus = async (id, status) => {
-        await fetch(`${API}/admin/winners/${id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ status })
-        });
-        load();
+        setProcessingId(id);
+        try {
+            const res = await fetch(`${API}/admin/winners/${id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ status })
+            });
+            if (!res.ok) throw new Error('Update failed');
+            load();
+        } catch (e) {
+            console.error(e);
+            alert(e.message);
+        } finally {
+            setProcessingId(null);
+        }
     };
 
     if (loading) return (
@@ -733,7 +765,17 @@ function WinnersTab({ token }) {
                                         <span className="font-black text-gray-900">{w.match_tier}</span>
                                         <span className="text-gray-400 text-xs ml-1">match{w.match_tier !== 1 ? 'es' : ''}</span>
                                     </td>
-                                    <td className="px-4 py-3 font-bold text-gray-900">£{Number(w.prize_amount).toFixed(2)}</td>
+                                    <td className="px-4 py-3">
+                                        <div className="flex flex-col">
+                                            <span className="font-bold text-gray-900">£{Number(w.prize_amount).toFixed(2)}</span>
+                                            {w.donation_amount > 0 && (
+                                                <span className="text-[10px] text-green-600 font-bold">-£{Number(w.donation_amount).toFixed(2)} Charity</span>
+                                            )}
+                                            {w.status === 'paid' && (
+                                                <span className="text-[10px] text-gray-400 font-medium italic">Net: £{Number(w.net_amount).toFixed(2)}</span>
+                                            )}
+                                        </div>
+                                    </td>
                                     <td className="px-4 py-3"><Badge status={w.status} /></td>
                                     <td className="px-4 py-3">
                                         {w.proof_image_url ? (
@@ -746,8 +788,20 @@ function WinnersTab({ token }) {
                                         <div className="flex gap-2">
                                             {w.status === 'pending' && (
                                                 <>
-                                                    <button onClick={() => updateStatus(w.id, 'paid')} className="text-xs bg-green-600 text-white px-2.5 py-1.5 rounded-lg font-bold hover:bg-green-700 transition active:scale-95">Mark Paid</button>
-                                                    <button onClick={() => updateStatus(w.id, 'rejected')} className="text-xs bg-red-50 text-red-600 px-2.5 py-1.5 rounded-lg font-bold hover:bg-red-100 transition active:scale-95">Reject</button>
+                                                    <button 
+                                                        onClick={() => updateStatus(w.id, 'paid')} 
+                                                        disabled={processingId === w.id}
+                                                        className="text-xs bg-green-600 text-white px-2.5 py-1.5 rounded-lg font-bold hover:bg-green-700 transition active:scale-95 disabled:opacity-50 flex items-center gap-1"
+                                                    >
+                                                        {processingId === w.id ? '...' : 'Mark Paid'}
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => updateStatus(w.id, 'rejected')} 
+                                                        disabled={processingId === w.id}
+                                                        className="text-xs bg-red-50 text-red-600 px-2.5 py-1.5 rounded-lg font-bold hover:bg-red-100 transition active:scale-95 disabled:opacity-50"
+                                                    >
+                                                        {processingId === w.id ? '...' : 'Reject'}
+                                                    </button>
                                                 </>
                                             )}
                                             {w.status !== 'pending' && (
@@ -806,10 +860,6 @@ export default function AdminDashboard() {
                     <h1 className="text-4xl font-black text-gray-900 tracking-tight">Admin HQ</h1>
                     <p className="text-gray-500 text-sm mt-1">Manage users, draws, charities, and payouts.</p>
                 </div>
-                <button onClick={() => supabase.auth.signOut().then(() => navigate('/auth'))}
-                    className="text-sm font-medium border px-4 py-2 rounded-xl hover:bg-gray-50 transition-colors">
-                    Log Out
-                </button>
             </div>
 
             {/* Tab Bar */}

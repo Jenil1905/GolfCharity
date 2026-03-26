@@ -98,21 +98,27 @@ export default function Dashboard() {
     const [isProfileSaving, setIsProfileSaving] = useState(false);
     const [proofInputs, setProofInputs] = useState({});
     const [stats, setStats] = useState({ estimatedPool: 0, nextDrawDate: null });
+    const [isActivating, setIsActivating] = useState(false);
+    const [pageLoading, setPageLoading] = useState(true);
+    const [showCharityModal, setShowCharityModal] = useState(false);
 
     const navigate = useNavigate();
 
     useEffect(() => {
-        supabase.auth.getSession().then(({ data: { session } }) => {
+        supabase.auth.getSession().then(async ({ data: { session } }) => {
             if (!session) {
                 navigate('/auth');
             } else {
                 setSession(session);
-                fetchScores(session.access_token);
-                fetchProfile(session.access_token);
-                fetchCharities();
-                fetchMyWinners(session.access_token);
-                fetchCurrentDraw();
-                fetchStats();
+                await Promise.all([
+                   fetchScores(session.access_token),
+                   fetchProfile(session.access_token),
+                   fetchCharities(),
+                   fetchMyWinners(session.access_token),
+                   fetchCurrentDraw(),
+                   fetchStats()
+                ]);
+                setPageLoading(false);
             }
         });
     }, [navigate]);
@@ -216,6 +222,12 @@ export default function Dashboard() {
             return;
         }
 
+        // Charity gate
+        if (!selectedCharityId) {
+            setShowCharityModal(true);
+            return;
+        }
+
         if (newScore < 1 || newScore > 45) return alert("Score must be 1-45");
         const selectedDate = new Date(newDate);
         const today = new Date();
@@ -303,23 +315,41 @@ export default function Dashboard() {
     };
 
     const handleStripeCheckout = async () => {
+        setIsActivating(true);
+        // Artificial delay for better UX (simulating payment processing)
+        await new Promise(resolve => setTimeout(resolve, 1500));
         try {
-            const res = await fetch(`${API}/stripe/create-checkout-session`, {
+            const res = await fetch(`${API}/admin/mock-activate`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     Authorization: `Bearer ${session.access_token}`
                 },
-                body: JSON.stringify({ planType: subscriptionPlan, returnUrl: window.location.origin + '/dashboard' })
+                body: JSON.stringify({ planType: subscriptionPlan })
             });
-            const { url } = await res.json();
-            if (url) window.location.href = url;
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error);
+            
+            // Refresh profile data immediately
+            setProfile(data);
+            setSubscriptionStatus('active');
+            setSubscriptionPlan(data.subscription_plan);
+            setSubscriptionExpires(data.subscription_expires);
+            fetchStats(); // Update the live jackpot pool immediately!
         } catch (err) {
             console.error(err);
+            alert("Activation failed: " + err.message);
+        } finally {
+            setIsActivating(false);
         }
     };
 
-    if (!session) return null;
+    if (!session || pageLoading) return (
+        <div className="flex flex-col items-center justify-center min-h-[80vh]">
+            <div className="w-16 h-16 border-4 border-gray-100 border-t-black rounded-full animate-spin mb-4"></div>
+            <p className="text-xs font-black uppercase tracking-widest text-gray-400 animate-pulse">Synchronizing Portal...</p>
+        </div>
+    );
 
     const todayStr = new Date().toISOString().split('T')[0];
     const deletingScore = scores.find(s => s.id === deleteId);
@@ -350,12 +380,36 @@ export default function Dashboard() {
                         <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1">Live Estimated Jackpot</p>
                         <div className="flex items-baseline gap-2">
                             <span className="text-4xl font-black tabular-nums">£{stats.estimatedPool.toFixed(2)}</span>
-                            <span className="text-xs text-green-400 font-bold animate-pulse">LIVE</span>
+                            <span className="text-[10px] text-gray-500 font-bold"> (£10 per active member)</span>
                         </div>
                     </div>
                     <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm flex flex-col justify-center">
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1">Time to Next Draw</p>
-                        <Countdown targetDate={stats.nextDrawDate} />
+                        <div className="flex justify-between items-center mb-1">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                                {currentDraw?.is_published ? 'Next Monthly Deadline' : 'Current Round Status'}
+                            </p>
+                            {currentDraw?.is_published && (
+                                <span className="text-[10px] bg-green-50 text-green-600 px-2 py-0.5 rounded-full font-black uppercase tracking-tighter shadow-sm border border-green-100 animate-pulse">
+                                    Current Month Closed
+                                </span>
+                            )}
+                        </div>
+                        
+                        {currentDraw?.is_published ? (
+                            <Countdown targetDate={stats.nextDrawDate} />
+                        ) : (
+                            <div className="flex items-center gap-3 py-2">
+                                <div className="w-10 h-10 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 shadow-inner">
+                                    <svg className="w-5 h-5 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                    </svg>
+                                </div>
+                                <div>
+                                    <p className="text-xl font-black text-gray-900 tracking-tight leading-none uppercase">Submissions Open</p>
+                                    <p className="text-[10px] text-indigo-500 font-bold uppercase tracking-widest mt-1">Submit your latest 5 rounds now!</p>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -379,9 +433,29 @@ export default function Dashboard() {
 
                         <div className="p-6">
                             {!isSubscribed ? (
-                                <button onClick={handleStripeCheckout} className="w-full py-4 bg-gray-900 text-white rounded-2xl hover:bg-black transition-all font-bold text-sm shadow-xl active:scale-[0.98]">
-                                    Activate Membership
-                                </button>
+                                <div className="space-y-4">
+                                    <div className="flex p-1 bg-gray-800 rounded-xl">
+                                        <button 
+                                            onClick={() => setSubscriptionPlan('monthly')}
+                                            className={`flex-1 py-2 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all ${subscriptionPlan === 'monthly' ? 'bg-white text-black' : 'text-gray-400 hover:text-white'}`}
+                                        >
+                                            Monthly £10
+                                        </button>
+                                        <button 
+                                            onClick={() => setSubscriptionPlan('yearly')}
+                                            className={`flex-1 py-2 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all ${subscriptionPlan === 'yearly' ? 'bg-white text-black' : 'text-gray-400 hover:text-white'}`}
+                                        >
+                                            Yearly £120
+                                        </button>
+                                    </div>
+                                    <button 
+                                        onClick={handleStripeCheckout} 
+                                        disabled={isActivating}
+                                        className="w-full py-4 bg-white text-black rounded-2xl hover:bg-gray-100 transition-all font-bold text-sm shadow-xl active:scale-[0.98] disabled:opacity-50"
+                                    >
+                                        {isActivating ? 'Activating account...' : 'Activate Membership'}
+                                    </button>
+                                </div>
                             ) : (
                                 <div className="space-y-4">
                                      <div className="flex items-center gap-3 p-3 bg-green-50 rounded-2xl border border-green-100">
@@ -475,16 +549,26 @@ export default function Dashboard() {
                             value={newDate}
                             onChange={e => setNewDate(e.target.value)}
                         />
-                        <button
-                            type="submit"
-                            disabled={isSubmitting}
-                            className={`px-8 py-3 rounded-xl font-bold transition-all min-w-[120px] shadow-sm active:scale-95 ${isSubscribed
-                                ? 'bg-black text-white hover:bg-gray-800 disabled:bg-gray-400'
-                                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                                }`}
-                        >
-                            {isSubmitting ? '...' : 'Submit'}
-                        </button>
+                        <div className="relative group">
+                            <button
+                                type="submit"
+                                disabled={isSubmitting}
+                                className={`px-8 py-3 rounded-xl font-bold transition-all min-w-[120px] shadow-sm active:scale-95 flex items-center justify-center gap-2 ${(!isSubscribed || !selectedCharityId)
+                                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                    : 'bg-black text-white hover:bg-gray-800 disabled:bg-gray-400'
+                                    }`}
+                            >
+                                {isSubmitting ? '...' : 'Submit'}
+                            </button>
+                            
+                            {/* Hover Tooltip for Charity Required */}
+                            {isSubscribed && !selectedCharityId && (
+                                <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-gray-900 text-white text-[10px] font-bold rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-xl z-10">
+                                    Select a charity in your profile to submit!
+                                    <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-gray-900"></div>
+                                </div>
+                            )}
+                        </div>
                     </form>
 
                     {scores.length === 0 ? (
@@ -531,22 +615,26 @@ export default function Dashboard() {
 
             <div className="mt-10 bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
                 <h2 className="text-xl font-semibold border-b pb-2 mb-4">Draw Participation & Winnings</h2>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                     <div className="bg-gray-50 p-4 rounded-xl text-center">
-                        <p className="text-xs text-gray-500 uppercase tracking-wider">Draws Entered</p>
-                        <p className="text-2xl font-black text-gray-900">{myWinners.length}</p>
-                    </div>
-                    <div className="bg-gray-50 p-4 rounded-xl text-center">
-                        <p className="text-xs text-gray-500 uppercase tracking-wider">Total Won</p>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Lifetime Winnings</p>
                         <p className="text-2xl font-black text-gray-900">£{myWinners.reduce((sum, w) => sum + Number(w.prize_amount || 0), 0).toFixed(2)}</p>
+                        <p className="text-[9px] text-gray-400 font-bold uppercase mt-1">Gross Prize Value</p>
                     </div>
-                    <div className="bg-gray-50 p-4 rounded-xl text-center">
-                        <p className="text-xs text-gray-500 uppercase tracking-wider">Pending</p>
-                        <p className="text-2xl font-black text-gray-900">£{myWinners.filter(w => w.status === 'pending').reduce((sum, w) => sum + Number(w.prize_amount || 0), 0).toFixed(2)}</p>
+                    <div className="bg-gray-50 p-4 rounded-xl text-center border-l-4 border-red-500">
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Total Donated</p>
+                        <p className="text-2xl font-black text-red-600">£{myWinners.filter(w => w.status === 'paid').reduce((sum, w) => sum + Number(w.donation_amount || 0), 0).toFixed(2)}</p>
+                        <p className="text-[9px] text-gray-400 font-bold uppercase mt-1">Impact Contributed</p>
                     </div>
-                    <div className="bg-gray-50 p-4 rounded-xl text-center">
-                        <p className="text-xs text-gray-500 uppercase tracking-wider">Paid</p>
-                        <p className="text-2xl font-black text-gray-900">£{myWinners.filter(w => w.status === 'paid').reduce((sum, w) => sum + Number(w.prize_amount || 0), 0).toFixed(2)}</p>
+                    <div className="bg-gray-50 p-4 rounded-xl text-center border-l-4 border-yellow-400">
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Awaiting Payout</p>
+                        <p className="text-2xl font-black text-orange-600">£{myWinners.filter(w => w.status !== 'paid' && w.status !== 'rejected').reduce((sum, w) => sum + Number(w.prize_amount * (1 - (profile?.charity_percentage || 10) / 100)), 0).toFixed(2)}</p>
+                        <p className="text-[9px] text-gray-400 font-bold uppercase mt-1">Net Estimation</p>
+                    </div>
+                    <div className="bg-gray-50 p-4 rounded-xl text-center border-l-4 border-green-500">
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Total Received</p>
+                        <p className="text-2xl font-black text-green-600">£{myWinners.filter(w => w.status === 'paid').reduce((sum, w) => sum + Number(w.net_amount || 0), 0).toFixed(2)}</p>
+                        <p className="text-[9px] text-gray-400 font-bold uppercase mt-1">Cleared to account</p>
                     </div>
                 </div>
 
@@ -559,9 +647,37 @@ export default function Dashboard() {
                         {myWinners.map(w => (
                             <div key={w.id} className="p-4 border border-gray-100 rounded-xl flex flex-col md:flex-row justify-between gap-3">
                                 <div>
-                                    <p className="text-sm text-gray-600">Draw: {w.draws?.draw_month ? new Date(w.draws.draw_month).toLocaleDateString(undefined, { month: 'short', year: 'numeric' }) : 'N/A'}</p>
-                                    <p className="text-lg font-bold text-gray-900">Match {w.match_tier} · £{Number(w.prize_amount || 0).toFixed(2)}</p>
-                                    <p className="text-xs text-gray-500">Status: {w.status}</p>
+                                    <p className="text-sm text-gray-600 font-bold uppercase tracking-widest flex items-center justify-between">
+                                        <span>Draw: {w.draws?.draw_month ? new Date(w.draws.draw_month).toLocaleDateString(undefined, { month: 'short', year: 'numeric' }) : 'N/A'}</span>
+                                    </p>
+                                    <div className="mt-3 space-y-1">
+                                        <div className="flex justify-between items-baseline">
+                                            <span className="text-xs text-gray-400 font-bold uppercase">Total Prize</span>
+                                            <span className="text-lg font-black text-gray-900">£{Number(w.prize_amount || 0).toFixed(2)}</span>
+                                        </div>
+                                        {w.status === 'paid' ? (
+                                            <>
+                                                <div className="flex justify-between items-baseline">
+                                                    <span className="text-xs text-green-600 font-bold uppercase">Your Contribution</span>
+                                                    <span className="text-sm font-bold text-green-600">-£{Number(w.donation_amount || 0).toFixed(2)}</span>
+                                                </div>
+                                                <div className="flex justify-between items-baseline pt-1 border-t border-gray-100">
+                                                    <span className="text-xs text-gray-900 font-black uppercase tracking-tight">Net Received</span>
+                                                    <span className="text-xl font-black text-indigo-600 tabular-nums">£{Number(w.net_amount || 0).toFixed(2)}</span>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <div className="flex justify-between items-baseline">
+                                               <span className="text-[10px] text-orange-500 font-black uppercase tracking-widest bg-orange-50 px-2 py-0.5 rounded">Awaiting Validation</span>
+                                               <span className="text-xs text-gray-400 font-medium italic">Net estimation: ~£{Number(w.prize_amount * (1 - (profile?.charity_percentage || 10) / 100)).toFixed(2)}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center gap-2 mt-4">
+                                        <span className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest border ${w.status === 'paid' ? 'bg-green-50 text-green-700 border-green-100' : 'bg-yellow-50 text-yellow-700 border-yellow-100'}`}>
+                                            Status: {w.status === 'paid' ? 'Paid to your account' : 'Pending Proof Approval'}
+                                        </span>
+                                    </div>
                                 </div>
                                 <div className="flex flex-col gap-2">
                                     <input
@@ -587,6 +703,28 @@ export default function Dashboard() {
                     </div>
                 )}
             </div>
+
+            {/* Charity Required Modal */}
+            {showCharityModal && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
+                    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowCharityModal(false)}></div>
+                    <div className="bg-white rounded-[2.5rem] p-10 max-w-sm w-full relative z-[210] shadow-2xl animate-in zoom-in-95 duration-200 text-center">
+                        <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                             <svg className="w-10 h-10 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                             </svg>
+                        </div>
+                        <h3 className="text-2xl font-black text-gray-900 mb-2">Charity Required</h3>
+                        <p className="text-gray-500 mb-8 text-sm leading-relaxed">Please select a charity in your profile settings before you can submit scores. Your play helps support these causes!</p>
+                        <button 
+                            onClick={() => { setShowCharityModal(false); setShowModal(true); }} 
+                            className="w-full py-4 bg-black text-white font-bold rounded-2xl hover:bg-gray-900 transition-all shadow-lg active:scale-95"
+                        >
+                            Select Charity Now
+                        </button>
+                    </div>
+                </div>
+            )}
 
         </div>
     );

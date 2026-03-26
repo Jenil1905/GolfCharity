@@ -70,17 +70,29 @@ CREATE TABLE IF NOT EXISTS public.winners (
   match_tier INTEGER NOT NULL CHECK (match_tier IN (3, 4, 5)),
   prize_amount NUMERIC NOT NULL,
   proof_image_url TEXT,
+  played_numbers INTEGER[], 
   status TEXT DEFAULT 'pending', -- 'pending', 'paid', 'rejected'
+  donation_amount NUMERIC DEFAULT 0,
+  net_amount NUMERIC DEFAULT 0,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
--- 7. Donations table (PRD Section 08)
 CREATE TABLE IF NOT EXISTS public.donations (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id UUID REFERENCES public.profiles(id), -- Nullable for guests
   charity_id UUID REFERENCES public.charities(id) NOT NULL,
+  winner_id UUID REFERENCES public.winners(id), -- Nullable, set for prize-based donations
   amount NUMERIC NOT NULL CHECK (amount > 0),
   status TEXT DEFAULT 'completed',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+-- 8. Draw Entries (Snapshots of EVERY participant's hand at publish time)
+CREATE TABLE IF NOT EXISTS public.draw_entries (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  draw_id UUID REFERENCES public.draws(id) ON DELETE CASCADE NOT NULL,
+  user_id UUID REFERENCES public.profiles(id) NOT NULL,
+  played_numbers INTEGER[] NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
