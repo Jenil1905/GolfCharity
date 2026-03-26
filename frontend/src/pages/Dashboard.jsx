@@ -1,3 +1,4 @@
+import API from '../utils/api';
 import { useState, useEffect } from 'react';
 import { supabase } from '../utils/supabaseClient';
 import { useNavigate } from 'react-router-dom';
@@ -79,7 +80,7 @@ export default function Dashboard() {
 
     const fetchProfile = async (token) => {
         try {
-            const res = await fetch('http://localhost:5000/api/admin/profile', {
+            const res = await fetch(`${API}/admin/profile`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             const data = await res.json();
@@ -92,9 +93,9 @@ export default function Dashboard() {
                 if (expiresAt) active = expiresAt > now;
 
                 let expiresValue = data.subscription_expires;
-                if (active && !expiresAt) {
-                    // maintain expected subscription lifecycle for admin-activated accounts
-                    const fallbackExpiration = new Date();
+                if (active && !expiresValue) {
+                    const startDate = data.subscription_started_at ? new Date(data.subscription_started_at) : new Date(data.created_at);
+                    const fallbackExpiration = new Date(startDate);
                     if (data.subscription_plan === 'yearly') {
                         fallbackExpiration.setFullYear(fallbackExpiration.getFullYear() + 1);
                     } else {
@@ -117,7 +118,7 @@ export default function Dashboard() {
 
     const fetchCharities = async () => {
         try {
-            const res = await fetch('http://localhost:5000/api/charities');
+            const res = await fetch(`${API}/charities`);
             const data = await res.json();
             if (Array.isArray(data)) setCharities(data);
         } catch (err) {
@@ -127,7 +128,7 @@ export default function Dashboard() {
 
     const fetchCurrentDraw = async () => {
         try {
-            const res = await fetch('http://localhost:5000/api/draws/current');
+            const res = await fetch(`${API}/draws/current`);
             const data = await res.json();
             setCurrentDraw(data);
         } catch (err) {
@@ -137,7 +138,7 @@ export default function Dashboard() {
 
     const fetchMyWinners = async (token) => {
         try {
-            const res = await fetch('http://localhost:5000/api/admin/my-winners', {
+            const res = await fetch(`${API}/admin/my-winners`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             const data = await res.json();
@@ -149,7 +150,7 @@ export default function Dashboard() {
 
     const fetchScores = async (token) => {
         try {
-            const res = await fetch('http://localhost:5000/api/scores', {
+            const res = await fetch(`${API}/scores`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             const data = await res.json();
@@ -177,7 +178,7 @@ export default function Dashboard() {
 
         setIsSubmitting(true);
         try {
-            await fetch('http://localhost:5000/api/scores', {
+            await fetch(`${API}/scores`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -198,7 +199,7 @@ export default function Dashboard() {
     const confirmDelete = async () => {
         if (!deleteId) return;
         try {
-            await fetch(`http://localhost:5000/api/scores/${deleteId}`, {
+            await fetch(`${API}/scores/${deleteId}`, {
                 method: 'DELETE',
                 headers: { Authorization: `Bearer ${session.access_token}` }
             });
@@ -214,7 +215,7 @@ export default function Dashboard() {
         if (!session) return;
         setIsProfileSaving(true);
         try {
-            const res = await fetch('http://localhost:5000/api/admin/profile', {
+            const res = await fetch(`${API}/admin/profile`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
                 body: JSON.stringify({
@@ -239,7 +240,7 @@ export default function Dashboard() {
     const submitProof = async (winnerId) => {
         if (!session || !proofInputs[winnerId]) return;
         try {
-            const res = await fetch(`http://localhost:5000/api/admin/my-winners/${winnerId}/proof`, {
+            const res = await fetch(`${API}/admin/my-winners/${winnerId}/proof`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
                 body: JSON.stringify({ proof_image_url: proofInputs[winnerId] })
@@ -257,7 +258,7 @@ export default function Dashboard() {
 
     const handleStripeCheckout = async () => {
         try {
-            const res = await fetch('http://localhost:5000/api/stripe/create-checkout-session', {
+            const res = await fetch(`${API}/stripe/create-checkout-session`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -296,95 +297,97 @@ export default function Dashboard() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-start">
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-4 sticky top-24">
-                    <h2 className="text-xl font-semibold border-b pb-2 text-gray-900">Subscription & Impact</h2>
-                    <div className="flex justify-between items-center bg-gray-50 p-3 rounded-xl border border-gray-100">
-                        <span className="text-gray-500 text-xs font-medium uppercase tracking-wider">Status</span>
-                        <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${isSubscribed ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                            {isSubscribed ? 'Active' : 'Inactive'}
-                        </span>
-                    </div>
-                    {!isSubscribed && (
-                        <p className="text-[11px] text-gray-500 leading-relaxed italic px-1">
-                            Subscribe to start submitting scores and entering monthly draws.
-                        </p>
-                    )}
-                    {!isSubscribed && (
-                        <button onClick={handleStripeCheckout} className="mt-2 w-full py-3 bg-black text-white rounded-xl hover:bg-gray-800 transition-all font-semibold text-sm shadow-lg active:scale-95">
-                            Activate Subscription
-                        </button>
-                    )}
-                    {isSubscribed && (
-                        <p className="text-[11px] text-green-700 font-medium leading-relaxed px-1">
-                            ✓ You're subscribed. Submit scores to enter the monthly draw!
-                        </p>
-                    )}
-
-                    {currentDraw && (
-                        <div className="bg-blue-50 rounded-xl p-3 text-sm text-blue-800 mb-3 border border-blue-100">
-                            <strong>Current draw month:</strong> {new Date(currentDraw.draw_month).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })} <br />
-                            <strong>Draw type:</strong> {currentDraw.draw_type || 'random'} <br />
-                            <strong>Recent winning numbers:</strong> {Array.isArray(currentDraw.winning_numbers) ? currentDraw.winning_numbers.join(', ') : 'N/A'}
+                {/* Left Sidebar: Subscription & Impact */}
+                <div className="flex flex-col gap-6 sticky top-24">
+                    <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+                        <div className="bg-gray-900 p-6 text-white">
+                            <div className="flex justify-between items-center mb-4">
+                                <span className="text-[10px] font-black uppercase tracking-widest opacity-60">Membership</span>
+                                <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider ${isSubscribed ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
+                                    {isSubscribed ? 'Active' : 'Inactive'}
+                                </span>
+                            </div>
+                            <h2 className="text-2xl font-black tracking-tight mb-1 capitalize">
+                                {subscriptionPlan} Plan
+                            </h2>
+                            <p className="text-xs text-gray-400 font-medium">
+                                {isSubscribed ? `Next renewal: ${subscriptionExpires ? new Date(subscriptionExpires).toLocaleDateString() : 'N/A'}` : 'Subscribe to enter the draw'}
+                            </p>
                         </div>
-                    )}
 
-                    <div className="mt-4 border-t border-gray-100 pt-4">
-                        <h3 className="text-sm font-bold uppercase tracking-wide text-gray-500 mb-2">Charity Contribution</h3>
-                        <label className="block text-xs text-gray-600 mb-1">Selected Charity</label>
-                        <select
-                            className="w-full border border-gray-200 rounded-lg p-2 mb-3"
-                            value={selectedCharityId || ''}
-                            onChange={e => setSelectedCharityId(e.target.value || null)}
-                        >
-                            <option value="">Choose charity</option>
-                            {charities.map(c => (
-                                <option key={c.id} value={c.id}>{c.name}</option>
-                            ))}
-                        </select>
+                        <div className="p-6">
+                            {!isSubscribed ? (
+                                <button onClick={handleStripeCheckout} className="w-full py-4 bg-gray-900 text-white rounded-2xl hover:bg-black transition-all font-bold text-sm shadow-xl active:scale-[0.98]">
+                                    Activate Membership
+                                </button>
+                            ) : (
+                                <div className="space-y-4">
+                                     <div className="flex items-center gap-3 p-3 bg-green-50 rounded-2xl border border-green-100">
+                                        <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center text-white text-xs">✓</div>
+                                        <div>
+                                            <p className="text-xs font-bold text-green-900">Verified Member</p>
+                                            <p className="text-[10px] text-green-700">Eligible for monthly prizes</p>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="pt-2">
+                                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Charity Support</p>
+                                        <div className="space-y-3">
+                                            <div>
+                                                <label className="block text-[10px] font-bold text-gray-500 ml-1 mb-1">Target Organization</label>
+                                                <select
+                                                    className="w-full bg-gray-50 border border-transparent rounded-xl px-4 py-3 text-xs font-bold focus:bg-white focus:border-gray-200 transition-all outline-none"
+                                                    value={selectedCharityId || ''}
+                                                    onChange={e => setSelectedCharityId(e.target.value || null)}
+                                                >
+                                                    <option value="">Select a Charity</option>
+                                                    {charities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] font-bold text-gray-500 ml-1 mb-1">Contribution Level ({charityPercentage}%)</label>
+                                                <input
+                                                    type="range" min="10" max="100" step="5"
+                                                    value={charityPercentage}
+                                                    onChange={e => setCharityPercentage(e.target.value)}
+                                                    className="w-full h-1.5 bg-gray-100 rounded-lg appearance-none cursor-pointer accent-gray-900 mb-2"
+                                                />
+                                                <div className="flex justify-between text-[9px] font-bold text-gray-400 px-1">
+                                                    <span>MIN 10%</span>
+                                                    <span>MAX 100%</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
 
-                        <label className="block text-xs text-gray-600 mb-1">Charity % (min 10)</label>
-                        <input
-                            type="number"
-                            min="10"
-                            max="100"
-                            value={charityPercentage}
-                            onChange={e => setCharityPercentage(e.target.value)}
-                            className="w-full border border-gray-200 rounded-lg p-2 mb-3"
-                        />
-
-                        <label className="block text-xs text-gray-600 mb-1">Subscription Plan</label>
-                        {!isPlanLocked ? (
-                            <div className="flex gap-2 mb-4">
-                                {['monthly', 'yearly'].map(plan => (
                                     <button
-                                        key={plan}
-                                        type="button"
-                                        onClick={() => setSubscriptionPlan(plan)}
-                                        className={`flex-1 py-2 rounded-lg text-xs font-bold ${subscriptionPlan === plan ? 'bg-black text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-                                        {plan.charAt(0).toUpperCase() + plan.slice(1)}
+                                        onClick={saveProfile}
+                                        disabled={isProfileSaving}
+                                        className="w-full mt-4 py-3 bg-gray-100 text-gray-900 font-bold rounded-xl hover:bg-gray-200 transition-all text-xs disabled:opacity-50"
+                                    >
+                                        {isProfileSaving ? 'Updating...' : 'Save Preferences'}
                                     </button>
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-800">
-                                <strong>Current Plan:</strong> {subscriptionPlan.charAt(0).toUpperCase() + subscriptionPlan.slice(1)} <br />
-                                <strong>Expires:</strong> {new Date(subscriptionExpires).toLocaleDateString()}
-                            </div>
-                        )}
+                                </div>
+                            )}
+                        </div>
+                    </div>
 
-                        <button
-                            onClick={saveProfile}
-                            disabled={!isSubscribed || isProfileSaving}
-                            className="w-full py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            {isProfileSaving ? 'Saving...' : 'Save Charity Choice'}
-                        </button>
-
-                        <div className="text-[11px] text-gray-500 mt-3">
-                            <p>Selected charity: <span className="font-bold">{profile?.charities?.name || 'Not set'}</span></p>
-                            <p>Charity contribution: <span className="font-bold">{profile?.charity_percentage || charityPercentage}%</span></p>
-                            <p>Subscription plan: <span className="font-bold capitalize">{subscriptionPlan}</span></p>
-                            <p>Renewal date: <span className="font-bold">{subscriptionExpires ? new Date(subscriptionExpires).toLocaleDateString() : 'N/A'}</span></p>
+                    {/* Impact Card */}
+                    <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4">Live Impact Summary</p>
+                        <div className="space-y-4">
+                            <div className="flex justify-between items-end">
+                                <span className="text-xs font-medium text-gray-500">Charity Selection</span>
+                                <span className="text-xs font-black text-gray-900">{profile?.charities?.name || 'Incomplete'}</span>
+                            </div>
+                            <div className="flex justify-between items-end">
+                                <span className="text-xs font-medium text-gray-500">Donation Weight</span>
+                                <span className="text-xs font-black text-gray-900">{profile?.charity_percentage || 10}%</span>
+                            </div>
+                            <div className="flex justify-between items-end">
+                                <span className="text-xs font-medium text-gray-500">Current Status</span>
+                                <span className="text-xs font-black text-green-600 uppercase">Qualifying</span>
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -1,3 +1,4 @@
+import API from '../utils/api';
 import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { supabase } from '../utils/supabaseClient';
@@ -15,7 +16,7 @@ export default function AdminRoute({ children }) {
 
             try {
                 // Use backend endpoint with service key — not affected by RLS
-                const res = await fetch('http://localhost:5000/api/admin/check-role', {
+                const res = await fetch(`${API}/admin/check-role`, {
                     headers: { Authorization: `Bearer ${session.access_token}` }
                 });
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../utils/supabaseClient';
 import { useNavigate } from 'react-router-dom';
 
-const API = 'http://localhost:5000/api';
+import API from '../utils/api';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -54,12 +54,12 @@ function AnalyticsTab({ token }) {
     const cards = stats ? [
         { label: 'Total Users', value: stats.totalUsers ?? 0, color: 'text-gray-900' },
         { label: 'Active Subscribers', value: stats.activeSubscribers ?? 0, color: 'text-green-600' },
-        { label: 'Monthly Subscribers', value: stats.monthlySubscribers ?? 0, color: 'text-indigo-600' },
-        { label: 'Yearly Subscribers', value: stats.yearlySubscribers ?? 0, color: 'text-purple-600' },
-        { label: 'Total Draws Run', value: stats.totalDraws ?? 0, color: 'text-gray-900' },
+        { label: 'Monthly Subs', value: stats.monthlySubscribers ?? 0, color: 'text-indigo-600' },
+        { label: 'Yearly Subs', value: stats.yearlySubscribers ?? 0, color: 'text-purple-600' },
         { label: 'Monthly Prize Pool', value: `£${stats.totalPrizePool ?? 0}`, sub: '£10 × active subscribers', color: 'text-blue-600' },
+        { label: 'One-time Donations', value: `£${(stats.totalDonations ?? 0).toFixed(2)}`, sub: 'Independent of gameplay', color: 'text-orange-600' },
         { label: 'Total Paid Out', value: `£${stats.totalPaidOut ?? 0}`, color: 'text-purple-600' },
-        { label: 'Charity Contribution', value: `£${(stats.charityContribution ?? 0).toFixed(2)}`, sub: '10% of prize pool', color: 'text-green-600' },
+        { label: 'Charity Impact', value: `£${((stats.charityContribution ?? 0) + (stats.totalDonations ?? 0)).toFixed(2)}`, sub: 'Sub % + One-time', color: 'text-green-600' },
     ] : [];
 
     return (
@@ -410,7 +410,7 @@ function DrawTab({ token }) {
 function CharitiesTab({ token }) {
     const [charities, setCharities] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [form, setForm] = useState({ name: '', description: '', image_url: '', is_featured: false });
+    const [form, setForm] = useState({ name: '', description: '', image_url: '', is_featured: false, category: 'General', upcoming_events: [] });
     const [editId, setEditId] = useState(null);
     const [showForm, setShowForm] = useState(false);
 
@@ -431,14 +431,21 @@ function CharitiesTab({ token }) {
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
             body: JSON.stringify(form)
         });
-        setForm({ name: '', description: '', image_url: '', is_featured: false });
+        setForm({ name: '', description: '', image_url: '', is_featured: false, category: 'General', upcoming_events: [] });
         setEditId(null);
         setShowForm(false);
         load();
     };
 
     const startEdit = (c) => {
-        setForm({ name: c.name, description: c.description || '', image_url: c.image_url || '', is_featured: c.is_featured });
+        setForm({ 
+            name: c.name, 
+            description: c.description || '', 
+            image_url: c.image_url || '', 
+            is_featured: c.is_featured,
+            category: c.category || 'General',
+            upcoming_events: c.upcoming_events || []
+        });
         setEditId(c.id);
         setShowForm(true);
     };
@@ -468,7 +475,17 @@ function CharitiesTab({ token }) {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <input placeholder="Charity name *" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
                             className="border rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-black transition" />
+                        <select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}
+                            className="border rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-black transition">
+                            {['General', 'Medical', 'Nature', 'Youth', 'Education', 'Other'].map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
                         <input placeholder="Image URL" value={form.image_url} onChange={e => setForm({ ...form, image_url: e.target.value })}
+                            className="border rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-black transition" />
+                         <input placeholder='Upcoming Event (e.g. "Golf Day,2024-12-01")' 
+                            onChange={e => {
+                                const [name, date] = e.target.value.split(',');
+                                if (name && date) setForm({ ...form, upcoming_events: [{ name, date }] });
+                            }}
                             className="border rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-black transition" />
                         <textarea placeholder="Description" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}
                             className="border rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-black transition md:col-span-2 resize-none" rows={2} />
@@ -527,6 +544,7 @@ function CharitiesTab({ token }) {
 function WinnersTab({ token }) {
     const [winners, setWinners] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [selectedProof, setSelectedProof] = useState(null);
 
     const load = useCallback(() => {
         setLoading(true);
@@ -572,7 +590,7 @@ function WinnersTab({ token }) {
                     <table className="w-full text-sm">
                         <thead className="bg-gray-50 border-b border-gray-100">
                             <tr>
-                                {['Winner', 'Draw Month', 'Match Tier', 'Prize', 'Status', 'Actions'].map(h => (
+                                {['Winner', 'Draw Month', 'Match Tier', 'Prize', 'Status', 'Proof', 'Actions'].map(h => (
                                     <th key={h} className="text-left px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-400">{h}</th>
                                 ))}
                             </tr>
@@ -591,6 +609,13 @@ function WinnersTab({ token }) {
                                     <td className="px-4 py-3 font-bold text-gray-900">£{Number(w.prize_amount).toFixed(2)}</td>
                                     <td className="px-4 py-3"><Badge status={w.status} /></td>
                                     <td className="px-4 py-3">
+                                        {w.proof_image_url ? (
+                                            <button onClick={() => setSelectedProof(w.proof_image_url)} className="text-indigo-600 hover:underline font-bold text-xs">View Proof</button>
+                                        ) : (
+                                            <span className="text-gray-300 italic text-xs">No proof</span>
+                                        )}
+                                    </td>
+                                    <td className="px-4 py-3">
                                         <div className="flex gap-2">
                                             {w.status === 'pending' && (
                                                 <>
@@ -607,6 +632,16 @@ function WinnersTab({ token }) {
                             ))}
                         </tbody>
                     </table>
+                </div>
+            )}
+
+            {/* Proof Modal */}
+            {selectedProof && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setSelectedProof(null)}>
+                    <div className="bg-white rounded-3xl p-4 max-w-2xl w-full shadow-2xl overflow-hidden relative" onClick={e => e.stopPropagation()}>
+                         <button onClick={() => setSelectedProof(null)} className="absolute top-4 right-4 bg-white/50 backdrop-blur px-3 py-1 rounded-lg text-sm font-bold z-10">✕ Close</button>
+                         <img src={selectedProof} alt="Score Proof" className="w-full h-auto rounded-xl max-h-[80vh] object-contain" />
+                    </div>
                 </div>
             )}
         </div>
