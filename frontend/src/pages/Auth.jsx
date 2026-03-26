@@ -13,6 +13,13 @@ export default function Auth() {
 
     const navigate = useNavigate();
 
+    const passRules = {
+        length: password.length >= 8,
+        capital: /[A-Z]/.test(password),
+        special: /[!@#$%^&*(),.?":{}|<>]/.test(password)
+    };
+    const isPassValid = passRules.length && passRules.capital && passRules.special;
+
     useEffect(() => {
         supabase.auth.getSession().then(({ data: { session } }) => {
             if (session) navigate('/dashboard', { replace: true });
@@ -21,6 +28,7 @@ export default function Auth() {
 
     const handleAuth = async (e) => {
         e.preventDefault();
+        if (!isLogin && !isPassValid) return; // Prevent weak passwords on signup
         setLoading(true);
         setError(null);
 
@@ -80,17 +88,37 @@ export default function Auth() {
                         required
                         value={email} onChange={e => setEmail(e.target.value)}
                     />
-                    <input
-                        type="password" placeholder="Password"
-                        className="w-full border px-4 py-3 rounded-lg focus:ring-2 focus:ring-black outline-none"
-                        required
-                        value={password} onChange={e => setPassword(e.target.value)}
-                    />
+                    <div className="space-y-2">
+                        <input
+                            type="password" placeholder="Password"
+                            className="w-full border px-4 py-3 rounded-lg focus:ring-2 focus:ring-black outline-none"
+                            required
+                            value={password} onChange={e => setPassword(e.target.value)}
+                        />
+                        
+                        {!isLogin && password.length > 0 && (
+                            <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Password Requirements</p>
+                                {[
+                                    { label: '8+ Characters', met: passRules.length },
+                                    { label: 'One Capital Letter', met: passRules.capital },
+                                    { label: 'One Special Character', met: passRules.special },
+                                ].map(rule => (
+                                    <div key={rule.label} className="flex items-center gap-2">
+                                        <div className={`w-3.5 h-3.5 rounded-full flex items-center justify-center border transition-colors ${rule.met ? 'bg-green-500 border-green-600' : 'bg-white border-gray-200'}`}>
+                                            {rule.met && <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={4} d="M5 13l4 4L19 7" /></svg>}
+                                        </div>
+                                        <span className={`text-[11px] font-bold ${rule.met ? 'text-green-700' : 'text-gray-400'}`}>{rule.label}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
 
                     <button
                         type="submit"
-                        disabled={loading}
-                        className="w-full bg-black text-white font-bold py-3 rounded-lg mt-4 hover:bg-gray-800 transition shadow-md hover:shadow-lg disabled:bg-gray-400"
+                        disabled={loading || (!isLogin && !isPassValid)}
+                        className="w-full bg-black text-white font-bold py-3 rounded-lg mt-4 hover:bg-gray-800 transition shadow-md hover:shadow-lg disabled:bg-gray-300 disabled:cursor-not-allowed"
                     >
                         {loading ? 'Processing...' : (isLogin ? 'Log In' : 'Sign Up')}
                     </button>
@@ -98,7 +126,7 @@ export default function Auth() {
 
                 <div className="text-center mt-6 text-sm text-gray-500">
                     {isLogin ? "Don't have an account? " : "Already have an account? "}
-                    <button onClick={() => setIsLogin(!isLogin)} className="font-bold text-black border-b border-black">
+                    <button onClick={() => { setIsLogin(!isLogin); setPassword(''); setError(null); }} className="font-bold text-black border-b border-black">
                         {isLogin ? 'Sign up' : 'Log in'}
                     </button>
                 </div>
