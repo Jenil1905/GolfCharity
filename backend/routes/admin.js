@@ -53,19 +53,21 @@ router.get('/check-role', verifyAuth, async (req, res) => {
 // ─── Analytics ───────────────────────────────────────────────────────────────
 
 router.get('/analytics', verifyAuth, verifyAdmin, async (req, res) => {
-    const [usersRes, activeRes, drawsRes, winnersRes] = await Promise.all([
+    const [usersRes, activeRes, drawsRes, winnersRes, donationsRes] = await Promise.all([
         supabaseAdmin.from('profiles').select('id', { count: 'exact', head: true }).neq('role', 'admin'),
         supabaseAdmin.from('profiles').select('id', { count: 'exact', head: true }).eq('subscription_status', 'active').neq('role', 'admin'),
         supabaseAdmin.from('draws').select('id', { count: 'exact', head: true }),
         supabaseAdmin.from('winners').select('prize_amount'),
+        supabaseAdmin.from('donations').select('amount'),
     ]);
 
     const totalUsers = usersRes.count || 0;
     const activeSubscribers = activeRes.count || 0;
     const totalDraws = drawsRes.count || 0;
-    const totalPrizePool = activeSubscribers * 10; // £10/month assumption
+    const totalPrizePool = activeSubscribers * 10; 
     const totalPaidOut = (winnersRes.data || []).reduce((sum, w) => sum + Number(w.prize_amount), 0);
-    const charityContribution = totalPrizePool * 0.10; // 10% goes to charity
+    const totalDonations = (donationsRes.data || []).reduce((sum, d) => sum + Number(d.amount || 0), 0);
+    const charityContribution = totalPrizePool * 0.10; 
 
     const { count: monthlySubscribers = 0 } = await supabaseAdmin
         .from('profiles')
@@ -79,7 +81,7 @@ router.get('/analytics', verifyAuth, verifyAdmin, async (req, res) => {
         .neq('role', 'admin')
         .eq('subscription_plan', 'yearly');
 
-    res.json({ totalUsers, activeSubscribers, totalDraws, totalPrizePool, totalPaidOut, charityContribution, monthlySubscribers, yearlySubscribers });
+    res.json({ totalUsers, activeSubscribers, totalDraws, totalPrizePool, totalPaidOut, charityContribution, monthlySubscribers, yearlySubscribers, totalDonations });
 });
 
 // ─── User Management ─────────────────────────────────────────────────────────
@@ -110,6 +112,14 @@ router.patch('/users/:id', verifyAuth, verifyAdmin, async (req, res) => {
     if (last_name !== undefined) updates.last_name = last_name;
     if (subscription_status !== undefined) updates.subscription_status = subscription_status;
     if (role !== undefined) updates.role = role;
+
+    // Set started_at if activating
+    if (subscription_status === 'active') {
+        const { data: current } = await supabaseAdmin.from('profiles').select('subscription_started_at').eq('id', id).single();
+        if (!current?.subscription_started_at) {
+            updates.subscription_started_at = new Date().toISOString();
+        }
+    }
 
     const { data, error } = await supabaseAdmin
         .from('profiles')

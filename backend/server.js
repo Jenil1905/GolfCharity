@@ -15,6 +15,7 @@ import drawsRoute from './routes/draws.js';
 import charitiesRoute from './routes/charities.js';
 import adminRoute from './routes/admin.js';
 import stripeRoute from './routes/stripe.js';
+import donationsRoute from './routes/donations.js';
 
 dotenv.config();
 
@@ -39,6 +40,7 @@ app.use('/api/draws', drawsRoute);
 app.use('/api/charities', charitiesRoute);
 app.use('/api/admin', adminRoute);
 app.use('/api/stripe', stripeRoute);
+app.use('/api/donations', donationsRoute);
 
 app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', message: 'Golf Charity API is running.' });

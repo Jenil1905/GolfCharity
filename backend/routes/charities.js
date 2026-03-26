@@ -4,20 +4,37 @@ import { verifyAuth, verifyAdmin } from './auth.js';
 
 const router = express.Router();
 
-// Public: list all charities
+// Public: list all charities with search and filter
 router.get('/', async (req, res) => {
-    const { data, error } = await supabaseAdmin.from('charities').select('*').order('name');
+    const { search, category } = req.query;
+    let query = supabaseAdmin.from('charities').select('*');
+
+    if (search) {
+        query = query.ilike('name', `%${search}%`);
+    }
+    if (category && category !== 'All') {
+        query = query.eq('category', category);
+    }
+
+    const { data, error } = await query.order('name');
     if (error) return res.status(500).json({ error: error.message });
     res.json(data);
 });
 
 // Admin: add charity
 router.post('/', verifyAuth, verifyAdmin, async (req, res) => {
-    const { name, description, image_url, is_featured } = req.body;
+    const { name, description, image_url, is_featured, category, upcoming_events } = req.body;
     if (!name) return res.status(400).json({ error: 'Name is required' });
     const { data, error } = await supabaseAdmin
         .from('charities')
-        .insert([{ name, description, image_url, is_featured: !!is_featured }])
+        .insert([{ 
+            name, 
+            description, 
+            image_url, 
+            is_featured: !!is_featured,
+            category: category || 'General',
+            upcoming_events: upcoming_events || []
+        }])
         .select()
         .single();
     if (error) return res.status(500).json({ error: error.message });
@@ -27,12 +44,14 @@ router.post('/', verifyAuth, verifyAdmin, async (req, res) => {
 // Admin: edit charity
 router.patch('/:id', verifyAuth, verifyAdmin, async (req, res) => {
     const { id } = req.params;
-    const { name, description, image_url, is_featured } = req.body;
+    const { name, description, image_url, is_featured, category, upcoming_events } = req.body;
     const updates = {};
     if (name !== undefined) updates.name = name;
     if (description !== undefined) updates.description = description;
     if (image_url !== undefined) updates.image_url = image_url;
     if (is_featured !== undefined) updates.is_featured = is_featured;
+    if (category !== undefined) updates.category = category;
+    if (upcoming_events !== undefined) updates.upcoming_events = upcoming_events;
 
     const { data, error } = await supabaseAdmin
         .from('charities')
