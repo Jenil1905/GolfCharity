@@ -102,6 +102,49 @@ router.get('/stats', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Check if a draw has already been published for the current calendar month
+router.get('/status', verifyAuth, verifyAdmin, async (req, res) => {
+    try {
+        const now = new Date();
+        const currentMonthStr = now.toISOString().slice(0, 7) + '-01'; 
+        console.log(`[DrawStatus] Checking for month: ${currentMonthStr}`);
+        
+        const { data: existing, error } = await supabaseAdmin
+            .from('draws')
+            .select('id, created_at, winning_numbers, winning_stats, draw_month, total_pool')
+            .eq('draw_month', currentMonthStr)
+            .maybeSingle();
+
+        if (error) throw error;
+        
+        // Dynamic Fallback: If stats are missing, count winners for matches
+        if (existing && !existing.winning_stats) {
+            console.log(`[DrawStatus] Calculating missing stats for draw ${existing.id}`);
+            const { data: winners } = await supabaseAdmin
+                .from('winners')
+                .select('match_tier')
+                .eq('draw_id', existing.id);
+            
+            const counts = { 5: 0, 4: 0, 3: 0 };
+            (winners || []).forEach(w => {
+                if (counts[w.match_tier] !== undefined) counts[w.match_tier]++;
+            });
+            existing.winning_stats = { matchCounts: counts };
+        }
+
+        console.log(`[DrawStatus] Result: ${existing ? 'LOCKED' : 'OPEN'}`);
+        
+        res.json({ 
+            isLocked: !!existing, 
+            month: now.toLocaleString('default', { month: 'long', year: 'numeric' }),
+            drawDetails: existing || null 
+        });
+    } catch (e) { 
+        console.error(`[DrawStatus] Error: ${e.message}`);
+        res.status(500).json({ error: e.message }); 
+    }
+});
+
 // Hall of Fame (public)
 router.get('/hall-of-fame', async (req, res) => {
     try {
@@ -179,7 +222,11 @@ router.post('/publish', verifyAuth, verifyAdmin, async (req, res) => {
         const matches = countMatches(userScores, winning_numbers);
         if (matches >= 3) {
             matchCounts[matches]++;
-            winnerCandidates.push({ user_id: u.id, match_tier: matches });
+            winnerCandidates.push({ 
+                user_id: u.id, 
+                match_tier: matches,
+                played_numbers: userScores.map(s => s.score).sort((a, b) => a - b)
+            });
         }
     }
 
@@ -190,6 +237,7 @@ router.post('/publish', verifyAuth, verifyAdmin, async (req, res) => {
         draw_type: draw_type || 'random',
         total_pool: totalPool,
         jackpot_rolled_over: matchCounts[5] === 0,
+        winning_stats: { matchCounts, rolloverAmount, tierPools: { 5: fivePool, 4: fourPool, 3: threePool } }
     };
 
     const { data: draw, error: drawError } = await supabaseAdmin
@@ -214,6 +262,7 @@ router.post('/publish', verifyAuth, verifyAdmin, async (req, res) => {
             match_tier: candidate.match_tier,
             prize_amount: prizeAmount,
             status: 'pending',
+            played_numbers: candidate.played_numbers
         });
     }
 

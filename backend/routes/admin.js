@@ -11,8 +11,11 @@ router.get('/profile', verifyAuth, async (req, res) => {
         .from('profiles')
         .select('*, charities(name, description, image_url)')
         .eq('id', req.user.id)
-        .single();
+        .maybeSingle();
+    
     if (error) return res.status(500).json({ error: error.message });
+    if (!data) return res.status(404).json({ error: 'Profile not found' });
+    
     res.json(data);
 });
 
@@ -157,7 +160,7 @@ router.delete('/users/:userId/scores/:scoreId', verifyAuth, verifyAdmin, async (
 router.get('/winners', verifyAuth, verifyAdmin, async (req, res) => {
     const { data, error } = await supabaseAdmin
         .from('winners')
-        .select('*, profiles(first_name, last_name), draws(draw_month)')
+        .select('*, profiles(first_name, last_name), draws(draw_month, winning_numbers)')
         .order('created_at', { ascending: false });
     if (error) return res.status(500).json({ error: error.message });
     res.json(data);

@@ -20,7 +20,7 @@ async function seed() {
         { 
             name: "Doctors Without Borders", 
             description: "Providing independent, impartial medical humanitarian assistance to the people who need it most.", 
-            image_url: "https://images.unsplash.com/photo-1576091160550-2173bd999c1d?auto=format&fit=crop&q=80&w=400", 
+            image_url: "https://images.unsplash.com/photo-1505751172876-fa1923c5c528?auto=format&fit=crop&q=80&w=400", 
             is_featured: true,
             category: "Medical",
             upcoming_events: [{ name: "Medical Aid Gala", date: "2024-05-15" }]

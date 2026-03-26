@@ -219,10 +219,7 @@ function UsersTab({ token }) {
                                                     <div className="flex flex-wrap gap-2">
                                                         {(userScores[u.id] || []).map(s => (
                                                             <div key={s.id} className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm shadow-sm">
-                                                                <span className="font-black text-gray-900">{s.score}</span>
-                                                                <span className="text-xs text-gray-400">{new Date(s.date).toLocaleDateString()}</span>
-                                                                <button onClick={() => deleteScore(u.id, s.id)} className="text-red-400 hover:text-red-600 ml-1 font-bold text-xs">✕</button>
-                                                            </div>
+                                                        </div>
                                                         ))}
                                                     </div>
                                                 )}
@@ -239,6 +236,44 @@ function UsersTab({ token }) {
     );
 }
 
+function Countdown({ targetDate }) {
+    const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+
+    useEffect(() => {
+        const timer = setInterval(() => {
+            const now = new Date();
+            const target = new Date(targetDate);
+            const diff = target - now;
+
+            if (diff <= 0) {
+                clearInterval(timer);
+                setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+            } else {
+                setTimeLeft({
+                    days: Math.floor(diff / (1000 * 60 * 60 * 24)),
+                    hours: Math.floor((diff / (1000 * 60 * 60)) % 24),
+                    minutes: Math.floor((diff / 1000 / 60) % 60),
+                    seconds: Math.floor((diff / 1000) % 60)
+                });
+            }
+        }, 1000);
+        return () => clearInterval(timer);
+    }, [targetDate]);
+
+    return (
+        <div className="flex gap-4">
+            {[ ['Days', timeLeft.days], ['Hrs', timeLeft.hours], ['Min', timeLeft.minutes], ['Sec', timeLeft.seconds] ].map(([label, val]) => (
+                <div key={label} className="text-center">
+                    <div className="bg-gray-900 text-white w-14 h-14 rounded-2xl flex items-center justify-center text-xl font-black shadow-lg">
+                        {String(val).padStart(2, '0')}
+                    </div>
+                    <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-2">{label}</div>
+                </div>
+            ))}
+        </div>
+    );
+}
+
 // ─── Draw Tab ─────────────────────────────────────────────────────────────────
 
 function DrawTab({ token }) {
@@ -247,8 +282,37 @@ function DrawTab({ token }) {
     const [simLoading, setSimLoading] = useState(false);
     const [publishLoading, setPublishLoading] = useState(false);
     const [publishResult, setPublishResult] = useState(null);
+    const [drawStatus, setDrawStatus] = useState({ isLocked: false, month: '', drawDetails: null });
+    const [statusLoading, setStatusLoading] = useState(true);
+    const [nextDrawDate, setNextDrawDate] = useState(null);
+
+    useEffect(() => {
+        fetchDrawStatus();
+        fetchStats();
+    }, [token]);
+
+    const fetchDrawStatus = async () => {
+        setStatusLoading(true);
+        try {
+            const res = await fetch(`${API}/draws/status`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            const data = await res.json();
+            setDrawStatus(data);
+        } catch (e) { console.error(e); }
+        finally { setStatusLoading(false); }
+    };
+
+    const fetchStats = async () => {
+        try {
+            const res = await fetch(`${API}/draws/stats`);
+            const data = await res.json();
+            setNextDrawDate(data.nextDrawDate);
+        } catch (e) { console.error(e); }
+    };
 
     const runSimulation = async () => {
+        if (drawStatus.isLocked) return;
         setSimLoading(true);
         setSimulation(null);
         setPublishResult(null);
@@ -264,7 +328,7 @@ function DrawTab({ token }) {
     };
 
     const publishDraw = async () => {
-        if (!simulation) return;
+        if (!simulation || drawStatus.isLocked) return;
         setPublishLoading(true);
         try {
             const res = await fetch(`${API}/draws/publish`, {
@@ -272,109 +336,155 @@ function DrawTab({ token }) {
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                 body: JSON.stringify({ winning_numbers: simulation.winning_numbers, draw_type: drawType })
             });
-            setPublishResult(await res.json());
+            
+            const data = await res.json();
+            if (!res.ok) {
+                alert(data.error || 'Failed to publish draw');
+                return;
+            }
+            
+            setPublishResult(data);
             setSimulation(null);
-        } catch (e) { console.error(e); }
+            fetchDrawStatus(); 
+        } catch (e) { 
+            console.error(e);
+            alert('A network error occurred while publishing the draw.');
+        }
         finally { setPublishLoading(false); }
     };
 
     return (
         <div>
-            <div className="mb-6"><h2 className="text-2xl font-bold">Draw Management</h2><p className="text-sm text-gray-500 mt-0.5">Simulate and publish the monthly prize draw.</p></div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Header with Timer */}
+            <div className="bg-white rounded-[2.5rem] p-8 border border-gray-100 shadow-sm mb-8 flex flex-col md:flex-row items-center justify-between gap-8 overflow-hidden relative">
+                <div className="relative z-10 text-center md:text-left">
+                    <h2 className="text-3xl font-black tracking-tighter text-gray-900 leading-tight">Match Execution</h2>
+                    <p className="text-sm text-gray-400 font-bold uppercase tracking-widest mt-1">Official Draw Countdown</p>
+                </div>
+                
+                <div className="relative z-10">
+                    {nextDrawDate && <Countdown targetDate={nextDrawDate} />}
+                </div>
 
+                {/* Decorative background element */}
+                <div className="absolute -right-20 -top-20 w-64 h-64 bg-gray-50 rounded-full blur-3xl opacity-50"></div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
                 {/* Controls */}
-                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-7">
-                    <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-4">Step 1 — Choose Draw Type</p>
-                    <div className="grid grid-cols-2 gap-3 mb-8">
+                <div className={`bg-white rounded-[2rem] border border-gray-100 shadow-sm p-8 transition-all duration-500 ${drawStatus.isLocked ? 'grayscale opacity-60' : ''}`}>
+                    <div className="flex items-center justify-between mb-8">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Step 1 — Strategy</p>
+                        {drawStatus.isLocked && <span className="text-[10px] font-black bg-amber-100 text-amber-600 px-3 py-1 rounded-full uppercase tracking-tighter">Locked</span>}
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-4 mb-8">
                         {['random', 'algorithmic'].map(t => (
                             <button key={t}
-                                onClick={() => setDrawType(t)}
-                                className={`py-4 rounded-2xl text-sm font-bold capitalize transition-all border-2 ${drawType === t
-                                    ? 'bg-gray-900 text-white border-gray-900 shadow-lg shadow-gray-900/20'
-                                    : 'bg-white text-gray-500 border-gray-100 hover:border-gray-300 hover:text-gray-800'
+                                onClick={() => !drawStatus.isLocked && setDrawType(t)}
+                                className={`py-6 rounded-3xl text-sm font-black capitalize transition-all border-2 ${drawType === t
+                                    ? 'bg-black text-white border-black shadow-xl shadow-black/20'
+                                    : 'bg-white text-gray-400 border-gray-100 hover:border-gray-300 hover:text-black'
                                     }`}
                             >
-                                <div className="text-xl mb-1">{t === 'random' ? '🎲' : '⚙️'}</div>
+                                <div className="text-2xl mb-2">{t === 'random' ? '🎲' : '⚙️'}</div>
                                 {t}
                             </button>
                         ))}
                     </div>
 
-                    <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Step 2 — Run Simulation</p>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4">Step 2 — Trigger</p>
                     <button
                         onClick={runSimulation}
-                        disabled={simLoading}
-                        className="w-full py-4 rounded-2xl font-bold text-sm transition-all relative overflow-hidden bg-gray-900 text-white hover:bg-gray-800 active:scale-[0.98] disabled:bg-gray-300 disabled:cursor-not-allowed shadow-lg shadow-gray-900/20"
+                        disabled={simLoading || drawStatus.isLocked || statusLoading}
+                        className="w-full py-5 rounded-[1.5rem] font-black text-sm transition-all relative overflow-hidden bg-black text-white hover:bg-gray-800 active:scale-[0.98] disabled:bg-gray-200 disabled:cursor-not-allowed shadow-xl shadow-black/20"
                     >
-                        {simLoading ? (
-                            <span className="flex items-center justify-center gap-2">
-                                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                                </svg>
-                                Simulating...
-                            </span>
-                        ) : 'Run Simulation →'}
+                        {statusLoading ? 'Validating...' : simLoading ? 'Calculating Odds...' : drawStatus.isLocked ? 'Month Completed' : 'Simulate Match Results →'}
                     </button>
                 </div>
 
                 {/* Results Panel */}
-                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-7 flex flex-col">
-                    {!simulation && !publishResult && !simLoading && (
+                <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-8 flex flex-col min-h-[400px]">
+                    {!simulation && !publishResult && !drawStatus.isLocked && !simLoading && (
                         <div className="flex-1 flex flex-col items-center justify-center text-center text-gray-300">
-                            <div className="text-6xl mb-4">🎯</div>
-                            <p className="font-medium text-gray-400">Simulation results will appear here</p>
-                            <p className="text-xs text-gray-300 mt-1">Run a simulation to continue</p>
+                            <div className="text-6xl mb-4 bg-gray-50 w-24 h-24 rounded-full flex items-center justify-center mx-auto">🎯</div>
+                            <p className="font-black text-gray-400 uppercase tracking-widest text-xs">Awaiting Execution</p>
+                            <p className="text-[10px] text-gray-400 mt-2 max-w-[200px]">Run a strategy simulation to see potential winners for this month.</p>
                         </div>
                     )}
 
                     {simLoading && (
-                        <div className="flex-1 flex flex-col gap-4 justify-center">
-                            <Skeleton className="h-4 w-40 mx-auto" />
-                            <div className="flex justify-center gap-3">
-                                {Array(5).fill(0).map((_, i) => <Skeleton key={i} className="w-11 h-11 rounded-full" />)}
+                        <div className="flex-1 flex flex-col gap-6 justify-center">
+                            <div className="space-y-3">
+                                <Skeleton className="h-4 w-32 mx-auto" />
+                                <div className="flex justify-center gap-3">
+                                    {Array(5).fill(0).map((_, i) => <Skeleton key={i} className="w-12 h-12 rounded-full" />)}
+                                </div>
                             </div>
                             <div className="grid grid-cols-3 gap-3">
-                                {Array(3).fill(0).map((_, i) => <Skeleton key={i} className="h-16 rounded-xl" />)}
+                                {Array(3).fill(0).map((_, i) => <Skeleton key={i} className="h-24 rounded-[1.5rem]" />)}
                             </div>
+                            <Skeleton className="h-14 w-full rounded-2xl mt-4" />
                         </div>
                     )}
 
-                    {simulation && !simLoading && (
-                        <div className="flex-1 flex flex-col">
-                            <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-1">Winning Numbers</p>
-                            <p className="text-[10px] text-gray-300 mb-4 capitalize">{drawType} draw</p>
-                            <div className="flex gap-2.5 mb-6">
-                                {simulation.winning_numbers.map((n, i) => (
-                                    <div key={i} className="w-11 h-11 rounded-full bg-gray-900 text-white flex items-center justify-center font-black text-sm shadow-md">
+                    {(drawStatus.isLocked || simulation || publishResult) && !simLoading && (
+                        <div className="flex-1 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
+                            <div className="flex items-center justify-between mb-6">
+                                <div>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Official Numbers</p>
+                                    <p className="text-xs font-black text-indigo-600 capitalize">
+                                        {drawStatus.isLocked ? 'Finalized Results' : `${drawType} Strategy`}
+                                    </p>
+                                </div>
+                                {drawStatus.isLocked && (
+                                    <div className="bg-green-50 text-green-700 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest border border-green-100">Official</div>
+                                )}
+                            </div>
+
+                            <div className="flex gap-3 mb-8">
+                                {(drawStatus.isLocked ? (drawStatus.drawDetails?.winning_numbers || []) : (simulation || publishResult)?.winning_numbers || []).map((n, i) => (
+                                    <div key={i} className="w-12 h-12 rounded-2xl bg-gray-900 text-white flex items-center justify-center font-black text-lg shadow-xl hover:scale-110 transition-transform cursor-default">
                                         {n}
                                     </div>
                                 ))}
                             </div>
-                            <div className="grid grid-cols-3 gap-3 mb-6">
-                                {[['5 Matches', simulation.match5, 'text-yellow-600'], ['4 Matches', simulation.match4, 'text-orange-500'], ['3 Matches', simulation.match3, 'text-blue-500']].map(([label, val, color]) => (
-                                    <div key={label} className="bg-gray-50 rounded-2xl p-4 text-center border border-gray-100">
-                                        <div className={`text-3xl font-black ${color}`}>{val}</div>
-                                        <div className="text-[10px] text-gray-400 mt-1 font-bold uppercase tracking-wide">{label}</div>
+
+                            <div className="grid grid-cols-3 gap-3 mb-8">
+                                {[
+                                    ['5 MATCHES', (drawStatus.isLocked ? drawStatus.drawDetails?.winning_stats?.matchCounts?.[5] : (simulation || publishResult)?.match5) ?? 0, 'text-yellow-600'],
+                                    ['4 MATCHES', (drawStatus.isLocked ? drawStatus.drawDetails?.winning_stats?.matchCounts?.[4] : (simulation || publishResult)?.match4) ?? 0, 'text-orange-500'],
+                                    ['3 MATCHES', (drawStatus.isLocked ? drawStatus.drawDetails?.winning_stats?.matchCounts?.[3] : (simulation || publishResult)?.match3) ?? 0, 'text-blue-500']
+                                ].map(([label, val, color]) => (
+                                    <div key={label} className="bg-gray-50 rounded-[1.5rem] p-5 text-center border border-gray-100 flex flex-col justify-center">
+                                        <div className={`text-3xl font-black ${color} tracking-tighter`}>{val}</div>
+                                        <div className="text-[9px] text-gray-400 mt-2 font-black uppercase tracking-widest leading-none">{label}</div>
                                     </div>
                                 ))}
                             </div>
-                            <button
-                                onClick={publishDraw}
-                                disabled={publishLoading}
-                                className="mt-auto w-full py-4 rounded-2xl font-bold text-sm bg-green-600 text-white hover:bg-green-700 active:scale-[0.98] transition-all shadow-lg shadow-green-600/20 disabled:bg-gray-300 disabled:cursor-not-allowed"
-                            >
-                                {publishLoading ? (
-                                    <span className="flex items-center justify-center gap-2">
-                                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                                        </svg>
-                                        Publishing...
-                                    </span>
-                                ) : '✓ Publish Official Draw'}
-                            </button>
+
+                            <div className="mt-auto">
+                                {drawStatus.isLocked ? (
+                                    <div className="p-6 bg-gray-50 rounded-2xl border border-gray-100">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Payout Pool</span>
+                                            <span className="text-sm font-black text-gray-900">£{drawStatus.drawDetails?.total_pool?.toFixed(2) || '0.00'}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-[10px] font-black text-green-600 uppercase tracking-widest">Status</span>
+                                            <span className="text-xs font-black text-green-700">✓ Completed</span>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <button
+                                        onClick={publishDraw}
+                                        disabled={publishLoading || drawStatus.isLocked || statusLoading}
+                                        className="w-full py-5 rounded-[1.5rem] font-black text-sm bg-green-600 text-white hover:bg-green-700 active:scale-[0.98] transition-all shadow-xl shadow-green-600/20 disabled:bg-gray-200 disabled:cursor-not-allowed"
+                                    >
+                                        {statusLoading ? 'Checking Lock...' : publishLoading ? 'Finalizing Draw...' : '✓ Publish Official Draw'}
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     )}
 
@@ -590,7 +700,7 @@ function WinnersTab({ token }) {
                     <table className="w-full text-sm">
                         <thead className="bg-gray-50 border-b border-gray-100">
                             <tr>
-                                {['Winner', 'Draw Month', 'Match Tier', 'Prize', 'Status', 'Proof', 'Actions'].map(h => (
+                                {['Winner', 'Draw Month', 'Numbers', 'Match', 'Prize', 'Status', 'Proof', 'Actions'].map(h => (
                                     <th key={h} className="text-left px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-400">{h}</th>
                                 ))}
                             </tr>
@@ -601,6 +711,23 @@ function WinnersTab({ token }) {
                                     <td className="px-4 py-3 font-medium text-gray-900">{w.profiles?.first_name || '—'} {w.profiles?.last_name || ''}</td>
                                     <td className="px-4 py-3 text-gray-500 text-xs">
                                         {w.draws?.draw_month ? new Date(w.draws.draw_month).toLocaleDateString(undefined, { month: 'short', year: 'numeric' }) : '—'}
+                                    </td>
+                                    <td className="px-4 py-3">
+                                        <div className="flex gap-1" title={w.played_numbers ? "Player's Hand" : "Draw Reference (Legacy)"}>
+                                            {(w.played_numbers || w.draws?.winning_numbers || []).map((n, idx) => {
+                                                const isMatch = w.played_numbers ? (w.draws?.winning_numbers || []).includes(n) : false;
+                                                const isLegacy = !w.played_numbers;
+                                                return (
+                                                    <span key={idx} className={`w-6 h-6 rounded-lg text-[10px] flex items-center justify-center font-black shadow-sm border ${
+                                                        isMatch ? 'bg-green-600 text-white border-green-700' : 
+                                                        isLegacy ? 'bg-gray-50 text-gray-300 border-gray-100 italic' :
+                                                        'bg-gray-100 text-gray-400 border-gray-200'
+                                                    }`}>
+                                                        {n}
+                                                    </span>
+                                                );
+                                            })}
+                                        </div>
                                     </td>
                                     <td className="px-4 py-3">
                                         <span className="font-black text-gray-900">{w.match_tier}</span>

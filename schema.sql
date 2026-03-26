@@ -4,6 +4,7 @@
 -- 1. Create custom types
 CREATE TYPE user_role AS ENUM ('user', 'admin');
 CREATE TYPE sub_status AS ENUM ('active', 'inactive', 'canceled');
+CREATE TYPE plan_duration AS ENUM ('monthly', 'yearly');
 
 -- 2. Profiles table (extends auth.users)
 CREATE TABLE IF NOT EXISTS public.profiles (
@@ -14,7 +15,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   subscription_status sub_status DEFAULT 'inactive',
   stripe_customer_id TEXT,
   stripe_subscription_id TEXT,
-  subscription_plan TEXT DEFAULT 'monthly', -- 'monthly' or 'yearly'
+  subscription_plan plan_duration DEFAULT 'monthly',
   subscription_expires TIMESTAMP WITH TIME ZONE,
   subscription_started_at TIMESTAMP WITH TIME ZONE,
   selected_charity_id UUID,
@@ -51,12 +52,13 @@ CREATE TABLE IF NOT EXISTS public.scores (
 -- 5. Draws table
 CREATE TABLE IF NOT EXISTS public.draws (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  draw_month DATE NOT NULL,
-  winning_numbers INTEGER[] CHECK (array_length(winning_numbers, 1) = 5),
+  draw_month DATE NOT NULL UNIQUE,
+  winning_numbers INTEGER[] NOT NULL CHECK (array_length(winning_numbers, 1) = 5),
   is_published BOOLEAN DEFAULT false,
   total_pool NUMERIC DEFAULT 0,
   jackpot_rolled_over BOOLEAN DEFAULT false,
   draw_type TEXT DEFAULT 'random', -- 'random' or 'algorithmic'
+  winning_stats JSONB, -- Stores counts for 3, 4, 5 matches and rollover amount
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 

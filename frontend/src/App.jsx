@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, Link, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { supabase } from './utils/supabaseClient';
 import API from './utils/api';
@@ -108,11 +108,36 @@ function ProfileModal({ isOpen, onClose, profile, onUpdate }) {
   );
 }
 
+function LogoutModal({ isOpen, onClose, onConfirm }) {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+      <div className="bg-white rounded-[2rem] p-8 max-w-sm w-full shadow-2xl text-center">
+        <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-6 text-red-500">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+          </svg>
+        </div>
+        <h3 className="text-2xl font-black text-gray-900 mb-2">Logout?</h3>
+        <p className="text-gray-500 mb-8 text-sm leading-relaxed">Are you sure you want to end your session on GolfPulse?</p>
+        <div className="flex gap-3">
+          <button onClick={onClose} className="flex-1 py-3 bg-gray-100 text-gray-900 font-bold rounded-xl hover:bg-gray-200 transition-all active:scale-95">Cancel</button>
+          <button onClick={onConfirm} className="flex-1 py-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition-all shadow-lg active:scale-95">Log Out</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Navbar() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [showDropdown, setShowDropdown] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+
+  const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -130,14 +155,22 @@ function Navbar() {
   const fetchProfile = async (token) => {
     try {
       const res = await fetch(`${API}/admin/profile`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.status === 404 || res.status === 401) return handleLogout();
       const data = await res.json();
+      if (data.error) return handleLogout();
       setProfile(data);
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+      console.error(e);
+      handleLogout();
+    }
   };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
+    setShowLogoutModal(false);
     setShowDropdown(false);
+    setProfile(null);
+    navigate('/');
   };
 
   return (
@@ -154,26 +187,37 @@ function Navbar() {
           {!session ? (
             <Link to="/auth" className="text-black transition text-xs font-black uppercase tracking-widest border-b-2 border-black">Sign In</Link>
           ) : (
-            <div className="relative">
-              <button 
-                onClick={() => setShowDropdown(!showDropdown)}
-                className="w-9 h-9 bg-gray-900 text-white rounded-full flex items-center justify-center font-black text-sm shadow-lg hover:scale-105 transition-all outline-none"
-              >
-                {profile?.first_name?.[0] || 'U'}
-              </button>
+            <>
+              {location.pathname === '/' ? (
+                <Link 
+                  to={profile?.role === 'admin' ? '/admin' : '/dashboard'} 
+                  className="bg-black text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:scale-105 transition-all shadow-lg"
+                >
+                  Dashboard
+                </Link>
+              ) : (
+                <div className="relative">
+                  <button 
+                    onClick={() => setShowDropdown(!showDropdown)}
+                    className="w-9 h-9 bg-gray-900 text-white rounded-full flex items-center justify-center font-black text-sm shadow-lg hover:scale-105 transition-all outline-none"
+                  >
+                    {profile?.first_name?.[0] || 'U'}
+                  </button>
 
-              {showDropdown && (
-                <div className="absolute right-0 mt-4 w-56 bg-white rounded-2xl shadow-2xl border border-gray-100 py-3 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
-                  <div className="px-5 py-3 border-b border-gray-50 mb-2">
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Account</p>
-                    <p className="text-xs font-black truncate">{profile?.first_name} {profile?.last_name}</p>
-                  </div>
-                  <button onClick={() => { setShowModal(true); setShowDropdown(false); }} className="w-full text-left px-5 py-2.5 text-xs font-bold text-gray-600 hover:bg-gray-50 transition">Settings</button>
-                  <div className="h-px bg-gray-50 my-2"></div>
-                  <button onClick={handleLogout} className="w-full text-left px-5 py-2.5 text-xs font-bold text-red-500 hover:bg-red-50 transition">Log Out</button>
+                  {showDropdown && (
+                    <div className="absolute right-0 mt-4 w-56 bg-white rounded-2xl shadow-2xl border border-gray-100 py-3 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                      <div className="px-5 py-3 border-b border-gray-50 mb-2">
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Account</p>
+                        <p className="text-xs font-black truncate">{profile?.first_name} {profile?.last_name}</p>
+                      </div>
+                      <button onClick={() => { setShowModal(true); setShowDropdown(false); }} className="w-full text-left px-5 py-2.5 text-xs font-bold text-gray-600 hover:bg-gray-50 transition">Settings</button>
+                      <div className="h-px bg-gray-50 my-2"></div>
+                      <button onClick={() => { setShowLogoutModal(true); setShowDropdown(false); }} className="w-full text-left px-5 py-2.5 text-xs font-bold text-red-500 hover:bg-red-50 transition">Log Out</button>
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
+            </>
           )}
         </div>
       </nav>
@@ -183,6 +227,12 @@ function Navbar() {
         onClose={() => setShowModal(false)} 
         profile={profile} 
         onUpdate={() => session && fetchProfile(session.access_token)} 
+      />
+
+      <LogoutModal 
+        isOpen={showLogoutModal} 
+        onClose={() => setShowLogoutModal(false)} 
+        onConfirm={handleLogout} 
       />
     </>
   );
