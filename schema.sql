@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   stripe_subscription_id TEXT,
   subscription_plan TEXT DEFAULT 'monthly', -- 'monthly' or 'yearly'
   subscription_expires TIMESTAMP WITH TIME ZONE,
+  subscription_started_at TIMESTAMP WITH TIME ZONE,
   selected_charity_id UUID,
   charity_percentage NUMERIC DEFAULT 10 CHECK (charity_percentage >= 10 AND charity_percentage <= 100),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
@@ -27,6 +28,8 @@ CREATE TABLE IF NOT EXISTS public.charities (
   name TEXT NOT NULL,
   description TEXT,
   image_url TEXT,
+  category TEXT DEFAULT 'General',
+  upcoming_events JSONB DEFAULT '[]'::jsonb,
   is_featured BOOLEAN DEFAULT false,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
@@ -65,6 +68,16 @@ CREATE TABLE IF NOT EXISTS public.winners (
   prize_amount NUMERIC NOT NULL,
   proof_image_url TEXT,
   status TEXT DEFAULT 'pending', -- 'pending', 'paid', 'rejected'
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+-- 7. Donations table (PRD Section 08)
+CREATE TABLE IF NOT EXISTS public.donations (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES public.profiles(id), -- Nullable for guests
+  charity_id UUID REFERENCES public.charities(id) NOT NULL,
+  amount NUMERIC NOT NULL CHECK (amount > 0),
+  status TEXT DEFAULT 'completed',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
