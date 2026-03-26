@@ -18,10 +18,13 @@ router.get('/profile', verifyAuth, async (req, res) => {
 
 // Users can update their charity selection and contribution percentage
 router.patch('/profile', verifyAuth, async (req, res) => {
-    const { selected_charity_id, charity_percentage } = req.body;
+    const { selected_charity_id, charity_percentage, first_name, last_name, phone } = req.body;
     const updates = {};
     if (selected_charity_id !== undefined) updates.selected_charity_id = selected_charity_id;
     if (charity_percentage !== undefined) updates.charity_percentage = Number(charity_percentage);
+    if (first_name !== undefined) updates.first_name = first_name;
+    if (last_name !== undefined) updates.last_name = last_name;
+    if (phone !== undefined) updates.phone = phone;
 
     if (updates.charity_percentage !== undefined && (updates.charity_percentage < 10 || updates.charity_percentage > 100)) {
         return res.status(400).json({ error: 'Charity percentage must be between 10 and 100.' });

@@ -339,7 +339,6 @@ export default function Dashboard() {
 
             <div className="flex justify-between items-center mb-8">
                 <h1 className="text-4xl font-black tracking-tight">GolfPulse Portal</h1>
-                <button onClick={() => supabase.auth.signOut().then(() => navigate('/auth'))} className="text-sm font-medium border px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors">Log Out</button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-start">

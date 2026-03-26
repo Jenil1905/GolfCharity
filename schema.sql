@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   subscription_started_at TIMESTAMP WITH TIME ZONE,
   selected_charity_id UUID,
   charity_percentage NUMERIC DEFAULT 10 CHECK (charity_percentage >= 10 AND charity_percentage <= 100),
+  phone TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
