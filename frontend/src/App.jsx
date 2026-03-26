@@ -239,6 +239,11 @@ function Navbar() {
 }
 
 function App() {
+  useEffect(() => {
+    // Wake up the Render backend immediately on load
+    fetch(`${API}/health`).catch(() => {});
+  }, []);
+
   return (
     <Router>
       <div className="min-h-screen font-sans bg-[#fbfbfb] text-gray-900 flex flex-col">
